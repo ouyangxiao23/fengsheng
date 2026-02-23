@@ -42,33 +42,48 @@
 
     <!-- Game Screen -->
     <div id="game-screen">
-        <!-- Status Bar -->
-        <div id="status-bar">
-            <span id="room-label"></span>
-            <span id="identity-label"></span>
+        <!-- Top Bar: Phase pipeline -->
+        <div id="top-bar">
+            <div id="phase-bar">
+                <div class="phase-track">
+                    <div class="phase-line"></div>
+                    <span class="phase-node" data-phase="draw">摸牌</span>
+                    <span class="phase-node" data-phase="action">出牌</span>
+                    <span class="phase-node" data-phase="transmission">传递</span>
+                    <span class="phase-node" data-phase="contention">争夺</span>
+                    <span class="phase-node" data-phase="reception">接收</span>
+                </div>
+            </div>
         </div>
 
         <!-- Table: Other Players -->
         <div id="table-area"></div>
 
-        <!-- Stage: Phase Bar + Intel + Buttons -->
+        <!-- Stage: Intel card only -->
         <div id="stage-area">
-            <div id="phase-bar">
-                <span class="phase-dot" data-phase="draw">摸牌</span>
-                <span class="phase-dot" data-phase="action">出牌</span>
-                <span class="phase-dot" data-phase="transmission">传递</span>
-                <span class="phase-dot" data-phase="contention">争夺</span>
-                <span class="phase-dot" data-phase="reception">接收</span>
-            </div>
-            <div id="stage-prompt"></div>
             <div id="intel-card-slot"></div>
-            <div id="stage-buttons"></div>
         </div>
 
-        <!-- Cockpit: My Hand + Intel -->
+        <!-- Cockpit: My Hand -->
         <div id="cockpit-area">
-            <div id="my-intel-bar"></div>
             <div id="my-hand"></div>
+        </div>
+
+        <!-- Intel Animation Layer -->
+        <div id="intel-anim-layer"></div>
+
+        <!-- Bottom Ribbon -->
+        <div id="bottom-ribbon">
+            <div class="ribbon-faction-strip"></div>
+            <div class="ribbon-row">
+                <div id="stage-prompt"></div>
+                <div id="stage-buttons"></div>
+                <div class="ribbon-divider"></div>
+                <div id="my-intel-bar"></div>
+                <div class="ribbon-divider"></div>
+                <span id="room-label"></span>
+                <span id="identity-label"></span>
+            </div>
         </div>
     </div>
 

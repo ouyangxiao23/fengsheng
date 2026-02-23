@@ -1,4 +1,4 @@
-/* Cockpit — my hand + intel bar */
+/* Cockpit — my hand, Frutiger Aero */
 
 #cockpit-area {
     flex: 1;
@@ -9,16 +9,7 @@
     min-height: 0;
 }
 
-/* My intel bar */
-#my-intel-bar {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
-    padding: 4px 0;
-    flex-shrink: 0;
-}
-
+/* My intel bar (lives in ribbon now) */
 #my-intel-bar .my-intel-label {
     font-size: 10px;
     color: var(--color-muted);
@@ -34,13 +25,15 @@
     justify-content: center;
     min-height: 0;
     padding-bottom: 4px;
+    overflow: visible;
 }
 
+/* Arc-based hand fan */
 .hand-card-wrap {
     position: absolute;
-    bottom: 0;
-    transform-origin: bottom center;
-    transition: transform 0.25s, left 0.25s;
+    /* transform-origin at card center, fan rotation applied via JS */
+    transform-origin: center center;
+    transition: transform 0.3s var(--transition-smooth), filter 0.3s var(--transition-smooth);
     z-index: 1;
 }
 
@@ -51,13 +44,23 @@
 
 .hand-card-wrap .card {
     transform-origin: bottom center;
-    transition: transform 0.2s;
+    transition: transform 0.3s var(--transition-smooth), box-shadow 0.3s var(--transition-smooth);
+}
+
+/* Selected: pop up along card's own rotation axis */
+.hand-card-wrap.card-selected-wrap {
+    transform: var(--fan-rotate, rotate(0deg)) translateY(-24px);
+    z-index: 50;
 }
 
 .hand-card-wrap.card-selected-wrap .card {
-    transform: translateY(-16px);
-    box-shadow: 0 4px 16px rgba(241, 196, 15, 0.5);
+    box-shadow: 0 6px 20px rgba(245, 166, 35, 0.35);
     border-color: var(--color-accent);
+}
+
+/* Playable glow on wrapper level */
+.hand-card-wrap.card-playable-wrap .card {
+    animation: glow-card 1.5s infinite;
 }
 
 /* Empty hand message */
@@ -71,7 +74,8 @@
 .swap-prompt {
     position: fixed;
     bottom: 0; left: 0; right: 0;
-    background: var(--color-surface);
+    background: var(--color-glass);
+    backdrop-filter: blur(var(--blur-glass));
     border-top: 2px solid var(--color-accent);
     padding: 12px;
     z-index: 70;
@@ -87,7 +91,8 @@
 .gift-ui {
     position: fixed;
     bottom: 0; left: 0; right: 0;
-    background: var(--color-surface);
+    background: var(--color-glass);
+    backdrop-filter: blur(var(--blur-glass));
     border-top: 2px solid var(--color-danger);
     padding: 12px;
     z-index: 70;
@@ -109,7 +114,7 @@
 .gift-player-btn {
     padding: 4px 12px;
     border-radius: var(--radius-sm);
-    background: var(--color-surface2);
+    background: rgba(255,255,255,0.7);
     border: 1px solid var(--color-border);
     color: var(--color-text);
     font-size: 12px;
@@ -118,6 +123,6 @@
 
 .gift-player-btn.selected {
     border-color: var(--color-accent);
-    background: var(--color-accent);
-    color: #000;
+    background: linear-gradient(180deg, #ffbe3d 0%, #f5a623 100%);
+    color: #fff;
 }

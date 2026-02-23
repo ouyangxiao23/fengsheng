@@ -1,52 +1,13 @@
-/* Stage area — phase bar, intel slot, action buttons */
+/* Stage area — intel card slot only (phase/prompt/buttons in bars) */
 
 #stage-area {
     flex: 0 0 auto;
     display: flex;
-    flex-direction: column;
     align-items: center;
-    padding: 8px 12px;
-    gap: 6px;
-    min-height: 120px;
+    justify-content: center;
+    padding: 4px 12px;
+    min-height: 0;
     position: relative;
-}
-
-/* Phase bar */
-#phase-bar {
-    display: flex;
-    gap: 4px;
-    align-items: center;
-}
-
-.phase-dot {
-    font-size: 10px;
-    padding: 3px 8px;
-    border-radius: 10px;
-    background: var(--color-surface);
-    color: var(--color-muted);
-    border: 1px solid var(--color-border);
-    transition: all 0.3s;
-}
-
-.phase-dot.phase-active {
-    background: var(--color-accent);
-    color: #000;
-    font-weight: 700;
-    border-color: var(--color-accent);
-}
-
-.phase-dot.phase-done {
-    background: var(--color-surface2);
-    color: var(--color-muted);
-    opacity: 0.5;
-}
-
-/* Stage prompt */
-#stage-prompt {
-    font-size: 13px;
-    color: var(--color-text);
-    text-align: center;
-    min-height: 20px;
 }
 
 /* Intel card slot */
@@ -54,19 +15,83 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    min-height: 40px;
+    min-height: 0;
 }
 
-/* Stage buttons */
-#stage-buttons {
+#intel-card-slot:not(:empty) {
+    min-height: 80px;
+    padding: 4px 0;
+}
+
+#intel-card-slot .card-back {
+    animation: subtle-spin 3s ease-in-out infinite;
+}
+
+/* Phase bar — pipeline style (lives inside top bar) */
+#phase-bar {
     display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-    justify-content: center;
+    flex-shrink: 0;
 }
 
-#stage-buttons .btn {
-    min-width: 70px;
+.phase-track {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    position: relative;
+    padding: 0 8px;
+}
+
+.phase-line {
+    position: absolute;
+    top: 50%;
+    left: 24px;
+    right: 24px;
+    height: 2px;
+    background: rgba(0,60,120,0.1);
+    transform: translateY(-50%);
+    z-index: 0;
+}
+.phase-line::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: var(--phase-progress, 0%);
+    background: linear-gradient(90deg, var(--color-blue), #5cb3f0);
+    box-shadow: 0 0 6px rgba(41,128,217,0.3);
+    border-radius: 1px;
+    transition: width 0.5s var(--transition-smooth);
+}
+
+.phase-node {
+    font-size: 10px;
+    padding: 3px 10px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.7);
+    color: var(--color-muted);
+    border: 1px solid var(--color-border);
+    transition: all 0.3s var(--transition-smooth);
+    position: relative;
+    z-index: 1;
+    margin: 0 2px;
+}
+
+.phase-node.phase-active {
+    background: linear-gradient(180deg, #5cb3f0 0%, #2980d9 100%);
+    color: #fff;
+    font-weight: 700;
+    border-color: rgba(41,128,217,0.3);
+    transform: scale(1.08);
+    box-shadow: 0 2px 8px rgba(41,128,217,0.3);
+    text-shadow: 0 1px 1px rgba(0,0,0,0.15);
+}
+
+.phase-node.phase-done {
+    background: rgba(41,128,217,0.1);
+    color: var(--color-blue);
+    opacity: 0.6;
+    border-color: rgba(41,128,217,0.15);
 }
 
 /* Direction selector */
@@ -78,17 +103,18 @@
 .direction-btn {
     padding: 8px 16px;
     border-radius: var(--radius);
-    background: var(--color-surface2);
+    background: linear-gradient(180deg, #fff 0%, #f0f4f8 100%);
     border: 1px solid var(--color-border);
     color: var(--color-text);
     font-size: 14px;
     cursor: pointer;
     transition: all 0.15s;
+    box-shadow: 0 1px 3px rgba(0,40,90,0.08);
 }
 
 .direction-btn:active {
-    background: var(--color-accent);
-    color: #000;
+    background: linear-gradient(180deg, #5cb3f0 0%, #2980d9 100%);
+    color: #fff;
 }
 
 /* Target selector overlay */
@@ -98,7 +124,7 @@
 
 .target-mode #table-area .avatar {
     border-color: var(--color-danger);
-    box-shadow: 0 0 8px rgba(231, 76, 60, 0.3);
+    box-shadow: 0 0 8px rgba(214, 48, 49, 0.2);
 }
 
 /* Probe result popup */
@@ -106,13 +132,15 @@
     position: fixed;
     top: 50%; left: 50%;
     transform: translate(-50%, -50%);
-    background: var(--color-surface);
-    border: 2px solid var(--color-accent);
-    border-radius: var(--radius);
+    background: var(--color-glass);
+    backdrop-filter: blur(var(--blur-glass));
+    border: 1px solid rgba(255,255,255,0.6);
+    border-radius: 12px;
     padding: 20px 32px;
     z-index: 80;
     text-align: center;
     font-size: 16px;
+    box-shadow: 0 8px 32px rgba(0,60,120,0.12);
 }
 
 .probe-result .identity-reveal {

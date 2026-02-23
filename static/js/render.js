@@ -16,6 +16,27 @@ const IDENTITY_COLORS = {
 };
 const PHASE_ORDER = ['draw', 'action', 'transmission', 'contention', 'reception'];
 
+// ── Avatar Position Cache ─────────────────────────────────
+
+let avatarPositions = {};
+let tableEllipse = { cx: 0, cy: 0, rx: 0, ry: 0 };
+
+export function getAvatarPagePosition(pid) {
+    const pos = avatarPositions[pid];
+    if (!pos) return null;
+    const area = document.getElementById('table-area');
+    if (!area) return null;
+    const rect = area.getBoundingClientRect();
+    return { x: rect.left + pos.x, y: rect.top + pos.y };
+}
+
+export function getSelfPosition() {
+    const hand = document.getElementById('my-hand');
+    if (!hand) return null;
+    const rect = hand.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + 20 };
+}
+
 // ── Server Message Dispatcher ──────────────────────────────
 
 export function handleServerMessage(data) {
@@ -111,27 +132,42 @@ export function handleServerMessage(data) {
             handleActionEffect(data);
             break;
 
-        case 'intel_transmitted':
+        case 'intel_transmitted': {
+            const senderId = data.sender_id;
+            const facingId = data.facing;
             update('game.intel', {
                 active: true,
-                sender: data.sender_id,
+                sender: senderId,
                 direction: data.direction,
-                facing: data.facing,
+                facing: facingId,
                 isLocked: data.is_locked,
                 lockTarget: data.lock_target,
                 acceptedBy: null,
             });
-            addLog(`${getName(data.sender_id)} 传出了情报 → ${data.direction === 'left' ? '←左' : '→右'}`);
-            renderStage();
-            renderTable();
+            addLog(`${getName(senderId)} 传出了情报 → ${data.direction === 'left' ? '←左' : '→右'}`);
+            // Animate intel from sender to facing
+            const fromPid = senderId === getState().myId ? '__self__' : senderId;
+            const toPid = facingId === getState().myId ? '__self__' : facingId;
+            animateIntelTransmission(fromPid, toPid, () => {
+                renderStage();
+                renderTable();
+            });
             break;
+        }
 
-        case 'intel_moved':
-            update('game.intel.facing', data.to_player);
-            addLog(`情报传到 ${getName(data.to_player)} 面前`);
-            renderStage();
-            renderTable();
+        case 'intel_moved': {
+            const oldFacing = getState().game.intel.facing;
+            const newFacing = data.to_player;
+            update('game.intel.facing', newFacing);
+            addLog(`情报传到 ${getName(newFacing)} 面前`);
+            const fromPid2 = oldFacing === getState().myId ? '__self__' : oldFacing;
+            const toPid2 = newFacing === getState().myId ? '__self__' : newFacing;
+            animateIntelTransmission(fromPid2, toPid2, () => {
+                renderStage();
+                renderTable();
+            });
             break;
+        }
 
         case 'intel_accepted':
             update('game.intel.acceptedBy', data.player_id);
@@ -163,7 +199,10 @@ export function handleServerMessage(data) {
             }
             update('game.intel', { active: false, sender: null, direction: null, facing: null, isLocked: false, lockTarget: null, acceptedBy: null });
             addLog(`${getName(data.player_id)} 接收了 ${colorName(data.card.intel_color)} 情报`);
-            renderAll();
+            // Animate reveal then render
+            animateIntelReveal(data.card.intel_color, () => {
+                renderAll();
+            });
             break;
         }
 
@@ -401,23 +440,28 @@ function handleStateSync(data) {
 // ── Rendering Functions ────────────────────────────────────
 
 export function renderAll() {
-    renderStatusBar();
+    renderRibbon();
     renderTable();
     renderStage();
     renderMyIntel();
     renderHand();
 }
 
-function renderStatusBar() {
+function renderRibbon() {
     const st = getState();
     const roomLabel = document.getElementById('room-label');
     const idLabel = document.getElementById('identity-label');
+    const strip = document.querySelector('.ribbon-faction-strip');
 
-    roomLabel.textContent = `房间: ${st.roomId || ''}`;
+    if (roomLabel) roomLabel.textContent = `房间: ${st.roomId || ''}`;
 
-    if (st.game.myIdentity) {
+    if (st.game.myIdentity && idLabel) {
         idLabel.textContent = IDENTITY_NAMES[st.game.myIdentity];
         idLabel.className = `identity-${st.game.myIdentity}`;
+    }
+
+    if (strip && st.game.myIdentity) {
+        strip.style.background = IDENTITY_COLORS[st.game.myIdentity] || 'var(--color-muted)';
     }
 }
 
@@ -438,6 +482,9 @@ export function renderTable() {
     const rx = w * 0.42;
     const ry = h * 0.7;
 
+    // Cache ellipse params
+    tableEllipse = { cx, cy, rx, ry };
+
     // Place avatars on semi-ellipse arc (pi to 0 for top semi-circle)
     area.innerHTML = '';
 
@@ -449,6 +496,9 @@ export function renderTable() {
         const angle = Math.PI - (Math.PI * (i + 1) / (n + 1));
         const x = cx + rx * Math.cos(angle);
         const y = cy - ry * Math.sin(angle);
+
+        // Cache avatar position
+        avatarPositions[pid] = { x, y };
 
         const wrap = document.createElement('div');
         wrap.className = 'avatar-wrap';
@@ -488,14 +538,21 @@ export function renderStage() {
     const g = st.game;
     const myId = st.myId;
 
-    // Phase bar
-    const dots = document.querySelectorAll('.phase-dot');
+    // Phase bar — use phase-node
+    const nodes = document.querySelectorAll('.phase-node');
     const activeIdx = PHASE_ORDER.indexOf(g.phase);
-    dots.forEach((dot, i) => {
-        dot.classList.remove('phase-active', 'phase-done');
-        if (i === activeIdx) dot.classList.add('phase-active');
-        else if (i < activeIdx) dot.classList.add('phase-done');
+    nodes.forEach((node, i) => {
+        node.classList.remove('phase-active', 'phase-done');
+        if (i === activeIdx) node.classList.add('phase-active');
+        else if (i < activeIdx) node.classList.add('phase-done');
     });
+
+    // Phase progress line
+    const phaseLine = document.querySelector('.phase-line');
+    if (phaseLine && nodes.length > 0) {
+        const progress = activeIdx >= 0 ? (activeIdx / (PHASE_ORDER.length - 1)) * 100 : 0;
+        phaseLine.style.setProperty('--phase-progress', progress + '%');
+    }
 
     const prompt = document.getElementById('stage-prompt');
     const btns = document.getElementById('stage-buttons');
@@ -515,7 +572,7 @@ export function renderStage() {
 
         case 'action':
             if (isMyTurn) {
-                prompt.textContent = '出牌阶段 — 选择手牌使用或点击完成';
+                prompt.textContent = '选择手牌使用或点击完成';
                 btns.innerHTML = `<button class="btn btn-accent btn-sm" id="btn-action-done">完成出牌</button>`;
             } else {
                 prompt.textContent = `${getName(g.currentPlayer)} 出牌中...`;
@@ -551,7 +608,7 @@ export function renderStage() {
         case 'contention':
             intelSlot.innerHTML = `<div class="card-back" style="width:48px;height:72px;font-size:16px;border-radius:4px;"></div>`;
             const receiverName = getName(g.intel.acceptedBy);
-            prompt.textContent = `争夺阶段 — ${receiverName} 将接收情报`;
+            prompt.textContent = `${receiverName} 将接收情报`;
 
             if (g.contention.askingPlayer === myId) {
                 prompt.textContent = '是否使用争夺牌？';
@@ -574,7 +631,6 @@ export function renderStage() {
                 prompt.textContent = `${dyingName} 濒死！是否使用澄清？`;
                 if (hasClarify) {
                     btns.innerHTML = `<button class="btn btn-secondary btn-sm" id="btn-rescue-pass">放弃</button>`;
-                    // Card selection handled by hand tap
                 } else {
                     btns.innerHTML = `<button class="btn btn-secondary btn-sm" id="btn-rescue-pass">放弃</button>`;
                 }
@@ -623,31 +679,56 @@ export function renderHand() {
     }
 
     const containerW = container.clientWidth || 340;
+    const containerH = container.clientHeight || 160;
+    const n = cards.length;
     const cardW = 72;
-    const maxOverlap = 50;
-    const totalNeed = cardW + (cards.length - 1) * maxOverlap;
-    const overlap = totalNeed > containerW
-        ? Math.max(20, (containerW - cardW) / Math.max(cards.length - 1, 1))
-        : maxOverlap;
-    const totalWidth = cardW + (cards.length - 1) * overlap;
-    const startX = (containerW - totalWidth) / 2;
+    const cardH = 108;
+
+    // Arc fan: spread adapts to card count
+    // Few cards = gentle arc, many cards = wider but capped
+    const arcDeg = n === 1 ? 0 : Math.min(50, 6 * (n - 1));
+    const arcRad = arcDeg * Math.PI / 180;
+    const R = 420;
+    // Pivot is the center-bottom of the fan circle, far below screen
+    const pivotX = containerW / 2;
+    const pivotY = containerH + R - 20;
 
     // Determine playable state
     const isMyTurn = g.currentPlayer === st.myId;
 
-    for (let i = 0; i < cards.length; i++) {
+    for (let i = 0; i < n; i++) {
         const card = cards[i];
         const wrap = document.createElement('div');
         wrap.className = 'hand-card-wrap';
-        wrap.style.left = (startX + i * overlap) + 'px';
-        wrap.style.zIndex = i + 1;
         wrap.dataset.cardId = card.id;
+
+        // Compute fan angle — evenly distribute around -PI/2 (straight up)
+        let angleFraction = n === 1 ? 0 : (i / (n - 1)) - 0.5;
+        const angle = -Math.PI / 2 + arcRad * angleFraction;
+        // Point on the arc circle
+        const cx = pivotX + R * Math.cos(angle);
+        const cy = pivotY + R * Math.sin(angle);
+        const rotateDeg = (angle + Math.PI / 2) * 180 / Math.PI;
+
+        // Center the card on the arc point (offset by half card size)
+        const left = cx - cardW / 2;
+        const bottom = containerH - cy - cardH / 2;
+
+        wrap.style.left = left + 'px';
+        wrap.style.bottom = bottom + 'px';
+        wrap.style.transform = `rotate(${rotateDeg}deg)`;
+        wrap.style.setProperty('--fan-rotate', `rotate(${rotateDeg}deg)`);
+        wrap.style.zIndex = i + 1;
 
         if (st.ui.selectedCardId === card.id) {
             wrap.classList.add('card-selected-wrap');
         }
 
         const playable = isCardPlayable(card, g, st);
+        if (playable) {
+            wrap.classList.add('card-playable-wrap');
+        }
+
         const cardEl = createCardElement(card, !playable);
         wrap.appendChild(cardEl);
         container.appendChild(wrap);
@@ -672,25 +753,186 @@ export function createCardElement(card, dimmed = false) {
     el.className = `card card-${card.intel_color}`;
     if (dimmed) el.classList.add('card-dimmed');
 
-    const pipCls = `pip-${card.intel_color}`;
     const phaseText = card.action_phase === 'action' ? '出牌' : '争夺';
-    const dirSymbol = card.direction === 'left' ? '↙' : card.direction === 'right' ? '↘' : '↕';
 
-    let attrsHtml = `<span>${dirSymbol}</span>`;
-    if (card.has_lock) attrsHtml += '<span>🔒</span>';
-    if (card.has_hidden) attrsHtml += '<span>🙈</span>';
+    // Direction arrow: clean CSS arrows
+    const dirLabel = card.direction === 'left' ? '←' : card.direction === 'right' ? '→' : '⇄';
+    const dirTitle = card.direction === 'left' ? '左传' : card.direction === 'right' ? '右传' : '任意';
+
+    // Build attribute badges
+    let badgesHtml = `<span class="card-badge card-badge-dir" title="${dirTitle}">${dirLabel}</span>`;
+    if (card.has_lock) badgesHtml += '<span class="card-badge card-badge-lock" title="锁定">锁</span>';
+    if (card.has_hidden) badgesHtml += '<span class="card-badge card-badge-hidden" title="暗置">密</span>';
 
     el.innerHTML = `
-        <div class="card-corner card-corner-tl"><span class="${pipCls}">●</span></div>
-        <div class="card-banner">${card.action_name}</div>
+        <div class="card-header">
+            <span class="card-phase-tag">${phaseText}</span>
+            <span class="card-name">${card.action_name}</span>
+        </div>
         <div class="card-icon">${card.icon}</div>
         <div class="card-footer">
-            <span class="card-phase-tag">${phaseText}</span>
-            <span class="card-attrs">${attrsHtml}</span>
+            <div class="card-badges">${badgesHtml}</div>
         </div>
-        <div class="card-corner card-corner-br"><span class="${pipCls}">●</span></div>
     `;
     return el;
+}
+
+// ── Intel Transmission Animation ──────────────────────────
+
+function animateIntelTransmission(fromPid, toPid, onComplete) {
+    const layer = document.getElementById('intel-anim-layer');
+    if (!layer) { onComplete(); return; }
+
+    // Get positions
+    let fromPos, toPos;
+    if (fromPid === '__self__') {
+        fromPos = getSelfPosition();
+    } else {
+        fromPos = getAvatarPagePosition(fromPid);
+    }
+    if (toPid === '__self__') {
+        toPos = getSelfPosition();
+    } else {
+        toPos = getAvatarPagePosition(toPid);
+    }
+
+    // Fallback: if positions not available, skip animation
+    if (!fromPos || !toPos) {
+        onComplete();
+        return;
+    }
+
+    // Convert to layer-relative coords
+    const layerRect = layer.getBoundingClientRect();
+    const sx = fromPos.x - layerRect.left;
+    const sy = fromPos.y - layerRect.top;
+    const ex = toPos.x - layerRect.left;
+    const ey = toPos.y - layerRect.top;
+
+    // Mid-point with arc (rise up a bit)
+    const mx = (sx + ex) / 2;
+    const my = Math.min(sy, ey) - 40;
+
+    // Create flying card-back element
+    const flyCard = document.createElement('div');
+    flyCard.className = 'card-back';
+    flyCard.style.cssText = `
+        width: 48px; height: 72px; font-size: 16px; border-radius: 4px;
+        position: absolute; left: 0; top: 0;
+        pointer-events: none;
+        transform-origin: center center;
+    `;
+    layer.appendChild(flyCard);
+
+    // Generate keyframes interpolating along a quadratic bezier arc
+    const keyframes = [];
+    const steps = 30;
+    for (let s = 0; s <= steps; s++) {
+        const t = s / steps;
+        // Quadratic bezier: B(t) = (1-t)^2 * P0 + 2(1-t)t * P1 + t^2 * P2
+        const px = (1 - t) * (1 - t) * sx + 2 * (1 - t) * t * mx + t * t * ex;
+        const py = (1 - t) * (1 - t) * sy + 2 * (1 - t) * t * my + t * t * ey;
+        const rotY = t * 720;
+        // Scale pulse: sine wave 0.7 → 1.0 → 0.7
+        const scl = 0.7 + 0.3 * Math.sin(t * Math.PI);
+
+        keyframes.push({
+            transform: `translate(${px - 24}px, ${py - 36}px) rotateY(${rotY}deg) scale(${scl})`,
+        });
+    }
+
+    const anim = flyCard.animate(keyframes, {
+        duration: 800,
+        easing: 'ease-in-out',
+        fill: 'forwards',
+    });
+
+    anim.onfinish = () => {
+        flyCard.remove();
+        onComplete();
+    };
+}
+
+// ── Intel Reveal Animation ────────────────────────────────
+
+function animateIntelReveal(color, onComplete) {
+    const layer = document.getElementById('intel-anim-layer');
+    const slot = document.getElementById('intel-card-slot');
+    if (!layer || !slot) { onComplete(); return; }
+
+    // Position at intel slot center
+    const slotRect = slot.getBoundingClientRect();
+    const layerRect = layer.getBoundingClientRect();
+    const cx = slotRect.left + slotRect.width / 2 - layerRect.left - 24;
+    const cy = slotRect.top + slotRect.height / 2 - layerRect.top - 36;
+
+    // Create 3D flip container
+    const container = document.createElement('div');
+    container.className = 'card-3d';
+    container.style.cssText = `
+        position: absolute; left: ${cx}px; top: ${cy}px;
+        width: 48px; height: 72px;
+        transform-style: preserve-3d;
+        pointer-events: none;
+    `;
+
+    // Back face (initially visible)
+    const backFace = document.createElement('div');
+    backFace.className = 'card-back card-back-face';
+    backFace.style.cssText = `
+        width: 48px; height: 72px; font-size: 16px; border-radius: 4px;
+        position: absolute; inset: 0;
+        backface-visibility: hidden;
+    `;
+
+    // Front face (the colored intel card)
+    const colorBgs = {
+        red: 'linear-gradient(135deg, #c0392b 0%, #e74c3c 50%, #c0392b 100%)',
+        blue: 'linear-gradient(135deg, #2471a3 0%, #3498db 50%, #2471a3 100%)',
+        black: 'linear-gradient(135deg, #1c2833 0%, #2c3e50 50%, #1c2833 100%)',
+    };
+    const colorLabels = { red: '红', blue: '蓝', black: '黑' };
+
+    const frontFace = document.createElement('div');
+    frontFace.className = 'card-front';
+    frontFace.style.cssText = `
+        width: 48px; height: 72px; border-radius: 4px;
+        position: absolute; inset: 0;
+        backface-visibility: hidden;
+        transform: rotateY(180deg);
+        background: ${colorBgs[color] || colorBgs.black};
+        border: 1.5px solid rgba(255,255,255,0.2);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 20px; font-weight: 700; color: #fff;
+        text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+    `;
+    frontFace.textContent = colorLabels[color] || '?';
+
+    container.appendChild(backFace);
+    container.appendChild(frontFace);
+    layer.appendChild(container);
+
+    // Flip animation: rotateY 0 → 180 with scale pulse
+    const flipKeyframes = [
+        { transform: 'rotateY(0deg) scale(1.0)', offset: 0 },
+        { transform: 'rotateY(90deg) scale(1.1)', offset: 0.4 },
+        { transform: 'rotateY(180deg) scale(1.05)', offset: 0.6 },
+        { transform: 'rotateY(180deg) scale(1.0)', offset: 1.0 },
+    ];
+
+    const anim = container.animate(flipKeyframes, {
+        duration: 1200,
+        easing: 'ease-in-out',
+        fill: 'forwards',
+    });
+
+    anim.onfinish = () => {
+        // Hold for 600ms then remove
+        setTimeout(() => {
+            container.remove();
+            onComplete();
+        }, 600);
+    };
 }
 
 // ── UI Helpers ─────────────────────────────────────────────
@@ -727,8 +969,10 @@ function showToast(msg, duration = 2000) {
         toast = document.createElement('div');
         toast.id = 'toast-msg';
         toast.style.cssText = `
-            position:fixed;top:60px;left:50%;transform:translateX(-50%);
-            background:var(--color-surface);border:1px solid var(--color-border);
+            position:fixed;bottom:60px;left:50%;transform:translateX(-50%);
+            background:var(--color-glass);
+            backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+            border:1px solid var(--color-border);
             padding:8px 16px;border-radius:6px;font-size:13px;z-index:99;
             color:var(--color-text);
         `;
@@ -755,7 +999,7 @@ function handleGameOver(data) {
         const name = st.game.playerNames[pid] || pid;
         const iName = IDENTITY_NAMES[identity];
         const won = data.winners.includes(pid);
-        identitiesHtml += `<div>${name}: ${iName} ${won ? '✓' : ''}</div>`;
+        identitiesHtml += `<div>${name}: ${iName} ${won ? '\u2713' : ''}</div>`;
     }
 
     content.innerHTML = `
