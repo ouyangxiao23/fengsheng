@@ -3,7 +3,7 @@
  */
 
 import { getState, update, getOrCreateUserId } from './state.js';
-import { handleServerMessage } from './render.js';
+import { handleServerMessage } from './gameManager.js';
 
 let ws = null;
 let reconnectTimer = null;
