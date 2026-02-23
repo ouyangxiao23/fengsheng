@@ -16,10 +16,16 @@ const IDENTITY_COLORS = {
 };
 const PHASE_ORDER = ['draw', 'action', 'transmission', 'contention', 'reception'];
 
+// Track which card IDs have already been rendered (for entrance animation)
+const seenHandCardIds = new Set();
+
 // ── Avatar Position Cache ─────────────────────────────────
 
 let avatarPositions = {};
 let tableEllipse = { cx: 0, cy: 0, rx: 0, ry: 0 };
+
+// The single persistent face-down intel card shown on the table
+let intelCardEl = null;
 
 export function getAvatarPagePosition(pid) {
     const pos = avatarPositions[pid];
@@ -88,6 +94,8 @@ export function handleServerMessage(data) {
             }
             update('ui.selectedCardId', null);
             update('ui.targetMode', null);
+            // Clear the intel card only when a brand-new round starts (draw phase)
+            if (data.phase === 'draw') removeIntelCard();
             renderStage();
             renderTable();
             break;
@@ -145,10 +153,8 @@ export function handleServerMessage(data) {
                 acceptedBy: null,
             });
             addLog(`${getName(senderId)} 传出了情报 → ${data.direction === 'left' ? '←左' : '→右'}`);
-            // Animate intel from sender to facing
-            const fromPid = senderId === getState().myId ? '__self__' : senderId;
-            const toPid = facingId === getState().myId ? '__self__' : facingId;
-            animateIntelTransmission(fromPid, toPid, () => {
+            // Animate intel from sender to facing along the ellipse arc
+            animateIntelAlongArc(senderId, facingId, () => {
                 renderStage();
                 renderTable();
             });
@@ -160,9 +166,7 @@ export function handleServerMessage(data) {
             const newFacing = data.to_player;
             update('game.intel.facing', newFacing);
             addLog(`情报传到 ${getName(newFacing)} 面前`);
-            const fromPid2 = oldFacing === getState().myId ? '__self__' : oldFacing;
-            const toPid2 = newFacing === getState().myId ? '__self__' : newFacing;
-            animateIntelTransmission(fromPid2, toPid2, () => {
+            animateIntelAlongArc(oldFacing, newFacing, () => {
                 renderStage();
                 renderTable();
             });
@@ -199,8 +203,9 @@ export function handleServerMessage(data) {
             }
             update('game.intel', { active: false, sender: null, direction: null, facing: null, isLocked: false, lockTarget: null, acceptedBy: null });
             addLog(`${getName(data.player_id)} 接收了 ${colorName(data.card.intel_color)} 情报`);
-            // Animate reveal then render
-            animateIntelReveal(data.card.intel_color, () => {
+            // Remove the table intel card, then animate reveal
+            removeIntelCard();
+            animateIntelReveal(data.card.intel_color, data.player_id, () => {
                 renderAll();
             });
             break;
@@ -372,6 +377,7 @@ function handleContentionResult(data) {
         case 'burn_success':
             addLog(`${getName(data.player_id)} 烧毁了 ${colorName(data.intel_color)} 情报！`);
             update('game.intel.active', false);
+            removeIntelCard();
             renderAll();
             break;
         case 'burn_fail':
@@ -470,52 +476,157 @@ export function renderTable() {
     const g = st.game;
     const area = document.getElementById('table-area');
 
-    // Get other players in seating order (exclude self)
-    const otherIds = g.turnOrder.filter(id => id !== st.myId);
-    const n = otherIds.length;
-    if (n === 0) return;
+    const allIds = g.turnOrder;  // all players including self
+    const N = allIds.length;
+    if (N === 0) return;
 
     const w = area.clientWidth || 360;
     const h = area.clientHeight || 200;
     const cx = w / 2;
-    const cy = h * 0.9;
+    const cy = h * 0.50;   // centre of area so full ellipse is visible
     const rx = w * 0.42;
-    const ry = h * 0.7;
+    const ry = h * 0.44;
 
     // Cache ellipse params
     tableEllipse = { cx, cy, rx, ry };
 
-    // Place avatars on semi-ellipse arc (pi to 0 for top semi-circle)
     area.innerHTML = '';
 
-    for (let i = 0; i < n; i++) {
-        const pid = otherIds[i];
-        const p = g.players[pid];
+    // Self is pinned to angle = -π/2 (bottom of ellipse).
+    // All players are spread evenly from that anchor around the full circle.
+    const selfIdx = allIds.indexOf(st.myId);
+    function playerAngle(i) {
+        const offset = (i - selfIdx + N) % N;   // 0 = self, 1 = next in turn order, …
+        return -Math.PI / 2 + (2 * Math.PI * offset / N);
+    }
+
+    // ── Draw table surface: two separate half-ellipses (upper + lower) ──
+    const svgNS = 'http://www.w3.org/2000/svg';
+    const tableSvg = document.createElementNS(svgNS, 'svg');
+    tableSvg.setAttribute('width', String(w));
+    tableSvg.setAttribute('height', String(h));
+    tableSvg.style.cssText = 'position:absolute;left:0;top:0;pointer-events:none;overflow:visible;';
+
+    const defs = document.createElementNS(svgNS, 'defs');
+
+    // Upper dome gradient: top (apex) → baseline
+    const gradUp = document.createElementNS(svgNS, 'linearGradient');
+    gradUp.setAttribute('id', 'tbl-grad-up');
+    gradUp.setAttribute('gradientUnits', 'userSpaceOnUse');
+    gradUp.setAttribute('x1', '0'); gradUp.setAttribute('y1', String(cy - ry));
+    gradUp.setAttribute('x2', '0'); gradUp.setAttribute('y2', String(cy));
+    const u1 = document.createElementNS(svgNS, 'stop');
+    u1.setAttribute('offset', '0%');   u1.setAttribute('stop-color', 'rgba(120,190,230,0.30)');
+    const u2 = document.createElementNS(svgNS, 'stop');
+    u2.setAttribute('offset', '100%'); u2.setAttribute('stop-color', 'rgba(120,190,230,0.12)');
+    gradUp.appendChild(u1); gradUp.appendChild(u2);
+    defs.appendChild(gradUp);
+
+    // Lower dome gradient: baseline → bottom (nadir)
+    const gradDown = document.createElementNS(svgNS, 'linearGradient');
+    gradDown.setAttribute('id', 'tbl-grad-down');
+    gradDown.setAttribute('gradientUnits', 'userSpaceOnUse');
+    gradDown.setAttribute('x1', '0'); gradDown.setAttribute('y1', String(cy));
+    gradDown.setAttribute('x2', '0'); gradDown.setAttribute('y2', String(cy + ry));
+    const d1 = document.createElementNS(svgNS, 'stop');
+    d1.setAttribute('offset', '0%');   d1.setAttribute('stop-color', 'rgba(120,190,230,0.12)');
+    const d2 = document.createElementNS(svgNS, 'stop');
+    d2.setAttribute('offset', '100%'); d2.setAttribute('stop-color', 'rgba(120,190,230,0.25)');
+    gradDown.appendChild(d1); gradDown.appendChild(d2);
+    defs.appendChild(gradDown);
+
+    tableSvg.appendChild(defs);
+
+    // ── Upper dome (sweep=1: clockwise on screen = arcs UP) ──
+    const upperDome = document.createElementNS(svgNS, 'path');
+    upperDome.setAttribute('d',
+        `M ${cx - rx} ${cy} A ${rx} ${ry} 0 0 1 ${cx + rx} ${cy} Z`
+    );
+    upperDome.setAttribute('fill', 'url(#tbl-grad-up)');
+    tableSvg.appendChild(upperDome);
+
+    // ── Lower dome (sweep=0: counter-clockwise on screen = arcs DOWN) ──
+    const lowerDome = document.createElementNS(svgNS, 'path');
+    lowerDome.setAttribute('d',
+        `M ${cx - rx} ${cy} A ${rx} ${ry} 0 0 0 ${cx + rx} ${cy} Z`
+    );
+    lowerDome.setAttribute('fill', 'url(#tbl-grad-down)');
+    tableSvg.appendChild(lowerDome);
+
+    // Outer stroke — full ellipse (both arcs)
+    const upperStroke = document.createElementNS(svgNS, 'path');
+    upperStroke.setAttribute('d',
+        `M ${cx - rx} ${cy} A ${rx} ${ry} 0 0 1 ${cx + rx} ${cy}`
+    );
+    upperStroke.setAttribute('fill', 'none');
+    upperStroke.setAttribute('stroke', 'rgba(80, 150, 200, 0.50)');
+    upperStroke.setAttribute('stroke-width', '1.5');
+    upperStroke.setAttribute('stroke-linecap', 'round');
+    tableSvg.appendChild(upperStroke);
+
+    const lowerStroke = document.createElementNS(svgNS, 'path');
+    lowerStroke.setAttribute('d',
+        `M ${cx - rx} ${cy} A ${rx} ${ry} 0 0 0 ${cx + rx} ${cy}`
+    );
+    lowerStroke.setAttribute('fill', 'none');
+    lowerStroke.setAttribute('stroke', 'rgba(80, 150, 200, 0.35)');
+    lowerStroke.setAttribute('stroke-width', '1.5');
+    lowerStroke.setAttribute('stroke-linecap', 'round');
+    tableSvg.appendChild(lowerStroke);
+
+    // Inner highlight arcs (glassy rim) — upper and lower
+    const innerUpper = document.createElementNS(svgNS, 'path');
+    innerUpper.setAttribute('d',
+        `M ${cx - rx + 8} ${cy} A ${rx - 8} ${ry - 6} 0 0 1 ${cx + rx - 8} ${cy}`
+    );
+    innerUpper.setAttribute('fill', 'none');
+    innerUpper.setAttribute('stroke', 'rgba(255, 255, 255, 0.45)');
+    innerUpper.setAttribute('stroke-width', '1');
+    tableSvg.appendChild(innerUpper);
+
+    const innerLower = document.createElementNS(svgNS, 'path');
+    innerLower.setAttribute('d',
+        `M ${cx - rx + 8} ${cy} A ${rx - 8} ${ry - 6} 0 0 0 ${cx + rx - 8} ${cy}`
+    );
+    innerLower.setAttribute('fill', 'none');
+    innerLower.setAttribute('stroke', 'rgba(255, 255, 255, 0.30)');
+    innerLower.setAttribute('stroke-width', '1');
+    tableSvg.appendChild(innerLower);
+
+    area.appendChild(tableSvg);
+
+    // Place ALL players (including self) around the full ellipse
+    for (let i = 0; i < N; i++) {
+        const pid = allIds[i];
+        const isSelf = pid === st.myId;
+        const p = isSelf
+            ? { handCount: g.myHand.length, intelArea: g.myIntel || [], alive: true }
+            : g.players[pid];
         if (!p) continue;
 
-        const angle = Math.PI - (Math.PI * (i + 1) / (n + 1));
+        const angle = playerAngle(i);
         const x = cx + rx * Math.cos(angle);
         const y = cy - ry * Math.sin(angle);
 
-        // Cache avatar position
-        avatarPositions[pid] = { x, y };
+        avatarPositions[pid] = { x, y, angle };
 
         const wrap = document.createElement('div');
         wrap.className = 'avatar-wrap';
         wrap.style.left = x + 'px';
-        wrap.style.top = y + 'px';
-        wrap.dataset.playerId = pid;
+        wrap.style.top  = y + 'px';
+        if (!isSelf) wrap.dataset.playerId = pid;
 
         const isActive = pid === g.currentPlayer;
         const isFacing = g.intel.active && pid === g.intel.facing;
-        const isDead = !p.alive;
+        const isDead   = !p.alive;
 
         let avatarCls = 'avatar';
+        if (isSelf)   avatarCls += ' avatar-me';
         if (isActive) avatarCls += ' avatar-active';
         if (isFacing) avatarCls += ' avatar-facing';
-        if (isDead) avatarCls += ' avatar-dead';
+        if (isDead)   avatarCls += ' avatar-dead';
 
-        const name = g.playerNames[pid] || pid;
+        const name    = isSelf ? (g.playerNames[pid] || '我') : (g.playerNames[pid] || pid);
         const initial = name.charAt(0);
 
         wrap.innerHTML = `
@@ -523,13 +634,26 @@ export function renderTable() {
                 ${initial}
                 <span class="avatar-hand-count">${p.handCount}</span>
             </div>
-            <div class="avatar-name">${name}</div>
+            <div class="avatar-name">${isSelf ? name + '（我）' : name}</div>
             <div class="avatar-intel">
                 ${p.intelArea.map(c => `<span class="intel-pip intel-pip-${c.intel_color}"></span>`).join('')}
             </div>
         `;
 
         area.appendChild(wrap);
+    }
+
+    // If intel is active, ensure the persistent card is placed at the facing player.
+    // This handles state-sync / reconnect scenarios where animation wasn't played.
+    if (g.intel.active && g.intel.facing) {
+        const rp = intelRestPosition(g.intel.facing);
+        if (rp) {
+            const card = ensureIntelCard();
+            if (card) card.style.transform = `translate(${rp.lx - 24}px, ${rp.ly - 36}px)`;
+        }
+    } else if (!g.intel.active) {
+        // Do NOT remove the card here — it is only removed explicitly
+        // on intel_received (flip) or burn_success (destroy).
     }
 }
 
@@ -581,8 +705,7 @@ export function renderStage() {
 
         case 'transmission':
             if (g.intel.active) {
-                // Intel is traveling
-                intelSlot.innerHTML = `<div class="card-back" style="width:48px;height:72px;font-size:16px;border-radius:4px;"></div>`;
+                // Card lives on the table next to the facing player — not in the stage slot
                 const facingName = getName(g.intel.facing);
                 const dir = g.intel.direction === 'left' ? '←左' : '→右';
                 prompt.textContent = `情报(${dir})在 ${facingName} 面前`;
@@ -606,7 +729,7 @@ export function renderStage() {
             break;
 
         case 'contention':
-            intelSlot.innerHTML = `<div class="card-back" style="width:48px;height:72px;font-size:16px;border-radius:4px;"></div>`;
+            // Card lives on the table — no duplicate in the stage slot
             const receiverName = getName(g.intel.acceptedBy);
             prompt.textContent = `${receiverName} 将接收情报`;
 
@@ -675,7 +798,15 @@ export function renderHand() {
     container.innerHTML = '';
     if (cards.length === 0) {
         container.innerHTML = '<span class="hand-empty">无手牌</span>';
+        // Clean seen set
+        seenHandCardIds.clear();
         return;
+    }
+
+    // Prune seenHandCardIds — remove IDs no longer in hand
+    const currentIds = new Set(cards.map(c => c.id));
+    for (const id of seenHandCardIds) {
+        if (!currentIds.has(id)) seenHandCardIds.delete(id);
     }
 
     const containerW = container.clientWidth || 340;
@@ -685,16 +816,20 @@ export function renderHand() {
     const cardH = 108;
 
     // Arc fan: spread adapts to card count
-    // Few cards = gentle arc, many cards = wider but capped
-    const arcDeg = n === 1 ? 0 : Math.min(50, 6 * (n - 1));
+    // Wider spread for better visual separation
+    const arcDeg = n === 1 ? 0 : Math.min(60, 8 * (n - 1));
     const arcRad = arcDeg * Math.PI / 180;
-    const R = 420;
+    const R = 380;
     // Pivot is the center-bottom of the fan circle, far below screen
+    // Offset 60px so cards sit well above the bottom ribbon
     const pivotX = containerW / 2;
-    const pivotY = containerH + R - 20;
+    const pivotY = containerH + R - 60;
 
     // Determine playable state
     const isMyTurn = g.currentPlayer === st.myId;
+
+    // Count new cards for stagger delay
+    let newCardIndex = 0;
 
     for (let i = 0; i < n; i++) {
         const card = cards[i];
@@ -720,6 +855,15 @@ export function renderHand() {
         wrap.style.setProperty('--fan-rotate', `rotate(${rotateDeg}deg)`);
         wrap.style.zIndex = i + 1;
 
+        // Entrance animation for newly seen cards
+        const isNewCard = !seenHandCardIds.has(card.id);
+        if (isNewCard) {
+            wrap.classList.add('card-entering');
+            wrap.style.setProperty('--enter-delay', `${newCardIndex * 0.08}s`);
+            seenHandCardIds.add(card.id);
+            newCardIndex++;
+        }
+
         if (st.ui.selectedCardId === card.id) {
             wrap.classList.add('card-selected-wrap');
         }
@@ -733,6 +877,18 @@ export function renderHand() {
         wrap.appendChild(cardEl);
         container.appendChild(wrap);
     }
+}
+
+/**
+ * Lightweight selection update — toggles CSS classes on existing DOM
+ * without rebuilding. Preserves hover state and avoids visual pops.
+ */
+export function updateHandSelection() {
+    const st = getState();
+    const selectedId = st.ui.selectedCardId;
+    document.querySelectorAll('.hand-card-wrap').forEach(w => {
+        w.classList.toggle('card-selected-wrap', w.dataset.cardId === selectedId);
+    });
 }
 
 function isCardPlayable(card, game, st) {
@@ -777,94 +933,131 @@ export function createCardElement(card, dimmed = false) {
     return el;
 }
 
-// ── Intel Transmission Animation ──────────────────────────
+// ── Persistent Table Intel Card ───────────────────────────
 
-function animateIntelTransmission(fromPid, toPid, onComplete) {
+function removeIntelCard() {
+    if (intelCardEl) {
+        intelCardEl.remove();
+        intelCardEl = null;
+    }
+}
+
+function ensureIntelCard() {
     const layer = document.getElementById('intel-anim-layer');
-    if (!layer) { onComplete(); return; }
-
-    // Get positions
-    let fromPos, toPos;
-    if (fromPid === '__self__') {
-        fromPos = getSelfPosition();
-    } else {
-        fromPos = getAvatarPagePosition(fromPid);
+    if (!layer) return null;
+    if (!intelCardEl || !intelCardEl.parentElement) {
+        intelCardEl = document.createElement('div');
+        intelCardEl.id = 'intel-on-table';
+        intelCardEl.className = 'card-back';
+        intelCardEl.style.cssText = `
+            width: 48px; height: 72px; font-size: 16px; border-radius: 4px;
+            position: absolute; left: 0; top: 0;
+            pointer-events: none;
+            transform-origin: center center;
+            z-index: 62;
+            transition: none;
+        `;
+        layer.appendChild(intelCardEl);
     }
-    if (toPid === '__self__') {
-        toPos = getSelfPosition();
-    } else {
-        toPos = getAvatarPagePosition(toPid);
-    }
+    return intelCardEl;
+}
 
-    // Fallback: if positions not available, skip animation
-    if (!fromPos || !toPos) {
-        onComplete();
-        return;
-    }
-
-    // Convert to layer-relative coords
+/**
+ * Returns the layer-relative resting position {lx, ly} for the card when
+ * it sits in front of a player.  Players on the ellipse get a small inward
+ * offset so the card appears "on the table" rather than over the avatar.
+ */
+function intelRestPosition(pid) {
+    const layer = document.getElementById('intel-anim-layer');
+    const tableArea = document.getElementById('table-area');
+    if (!layer || !tableArea) return null;
     const layerRect = layer.getBoundingClientRect();
-    const sx = fromPos.x - layerRect.left;
-    const sy = fromPos.y - layerRect.top;
-    const ex = toPos.x - layerRect.left;
-    const ey = toPos.y - layerRect.top;
+    const areaRect  = tableArea.getBoundingClientRect();
 
-    // Mid-point with arc (rise up a bit)
-    const mx = (sx + ex) / 2;
-    const my = Math.min(sy, ey) - 40;
+    const pos = avatarPositions[pid];
+    if (!pos) return null;
+    const a = pos.angle;
+    // Move card 38px inward (toward table centre) from the avatar
+    const inx = -Math.cos(a);
+    const iny =  Math.sin(a);
+    return {
+        lx: areaRect.left + pos.x + inx * 38 - layerRect.left,
+        ly: areaRect.top  + pos.y + iny * 38 - layerRect.top,
+        angle: a,
+    };
+}
 
-    // Create flying card-back element
-    const flyCard = document.createElement('div');
-    flyCard.className = 'card-back';
-    flyCard.style.cssText = `
-        width: 48px; height: 72px; font-size: 16px; border-radius: 4px;
-        position: absolute; left: 0; top: 0;
-        pointer-events: none;
-        transform-origin: center center;
-    `;
-    layer.appendChild(flyCard);
+// ── Intel Arc Animation ────────────────────────────────────
 
-    // Generate keyframes interpolating along a quadratic bezier arc
+function animateIntelAlongArc(fromPid, toPid, onComplete) {
+    const layer = document.getElementById('intel-anim-layer');
+    const tableArea = document.getElementById('table-area');
+    if (!layer || !tableArea) { onComplete(); return; }
+
+    const layerRect = layer.getBoundingClientRect();
+    const areaRect  = tableArea.getBoundingClientRect();
+    const ecx = areaRect.left + tableEllipse.cx - layerRect.left;
+    const ecy = areaRect.top  + tableEllipse.cy - layerRect.top;
+    const erx = tableEllipse.rx;
+    const ery = tableEllipse.ry;
+
+    const from = intelRestPosition(fromPid);
+    const to   = intelRestPosition(toPid);
+    if (!from || !to) { onComplete(); return; }
+
+    const card = ensureIntelCard();
+    if (!card) { onComplete(); return; }
+
+    const STEPS = 48;
     const keyframes = [];
-    const steps = 30;
-    for (let s = 0; s <= steps; s++) {
-        const t = s / steps;
-        // Quadratic bezier: B(t) = (1-t)^2 * P0 + 2(1-t)t * P1 + t^2 * P2
-        const px = (1 - t) * (1 - t) * sx + 2 * (1 - t) * t * mx + t * t * ex;
-        const py = (1 - t) * (1 - t) * sy + 2 * (1 - t) * t * my + t * t * ey;
-        const rotY = t * 720;
-        // Scale pulse: sine wave 0.7 → 1.0 → 0.7
-        const scl = 0.7 + 0.3 * Math.sin(t * Math.PI);
 
-        keyframes.push({
-            transform: `translate(${px - 24}px, ${py - 36}px) rotateY(${rotY}deg) scale(${scl})`,
-        });
+    // Both players are on the ellipse — slide the card along the inset arc
+    const inset = 38;
+    for (let s = 0; s <= STEPS; s++) {
+        const t   = s / STEPS;
+        const a   = from.angle + (to.angle - from.angle) * t;
+        const inx = -Math.cos(a);
+        const iny =  Math.sin(a);
+        const px  = ecx + erx * Math.cos(a) + inx * inset;
+        const py  = ecy - ery * Math.sin(a) + iny * inset;
+        keyframes.push({ transform: `translate(${px - 24}px, ${py - 36}px)` });
     }
 
-    const anim = flyCard.animate(keyframes, {
-        duration: 800,
+    // Duration scales with arc length
+    const arcFraction = Math.abs(to.angle - from.angle) / Math.PI;
+    const duration = Math.round(400 + 500 * Math.min(arcFraction, 1));
+
+    const anim = card.animate(keyframes, {
+        duration,
         easing: 'ease-in-out',
         fill: 'forwards',
     });
 
     anim.onfinish = () => {
-        flyCard.remove();
+        // Commit final position as inline style so the card STAYS there
+        card.style.transform = keyframes[keyframes.length - 1].transform;
         onComplete();
     };
 }
 
 // ── Intel Reveal Animation ────────────────────────────────
 
-function animateIntelReveal(color, onComplete) {
+function animateIntelReveal(color, receiverPid, onComplete) {
     const layer = document.getElementById('intel-anim-layer');
-    const slot = document.getElementById('intel-card-slot');
-    if (!layer || !slot) { onComplete(); return; }
+    if (!layer) { onComplete(); return; }
 
-    // Position at intel slot center
-    const slotRect = slot.getBoundingClientRect();
-    const layerRect = layer.getBoundingClientRect();
-    const cx = slotRect.left + slotRect.width / 2 - layerRect.left - 24;
-    const cy = slotRect.top + slotRect.height / 2 - layerRect.top - 36;
+    // Position the reveal at the receiver's avatar on the table
+    let cx, cy;
+    const rp = intelRestPosition(receiverPid);
+    if (rp) {
+        cx = rp.lx - 24;   // rp.lx is card centre; subtract half-card for left
+        cy = rp.ly - 36;   // rp.ly is card centre; subtract half-card for top
+    } else {
+        // Fallback: centre of screen
+        const layerRect2 = layer.getBoundingClientRect();
+        cx = layerRect2.width  / 2 - 24;
+        cy = layerRect2.height / 2 - 36;
+    }
 
     // Create 3D flip container
     const container = document.createElement('div');

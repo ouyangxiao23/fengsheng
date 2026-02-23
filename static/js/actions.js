@@ -4,7 +4,7 @@
 
 import { getState, update } from './state.js';
 import { send } from './ws.js';
-import { renderHand, renderStage, renderTable } from './render.js';
+import { renderHand, renderStage, renderTable, updateHandSelection } from './render.js';
 
 export function bindActions() {
     // Event delegation on game screen
@@ -143,7 +143,7 @@ function handleCardTap(wrap, st) {
     if (st.ui.selectedCardId === cardId) {
         update('ui.selectedCardId', null);
         update('ui.targetMode', null);
-        renderHand();
+        updateHandSelection();
         renderStage();
         return;
     }
@@ -157,7 +157,7 @@ function handleCardTap(wrap, st) {
         if (card.action_effect === 'probe' || card.action_effect === 'coerce') {
             update('ui.targetMode', card.action_effect);
             update('ui.pendingAction', card);
-            renderHand();
+            updateHandSelection();
             renderStage();
             // Prompt in stage
             document.getElementById('stage-prompt').textContent =
@@ -167,7 +167,7 @@ function handleCardTap(wrap, st) {
         if (card.action_effect === 'clarify') {
             update('ui.targetMode', 'clarify');
             update('ui.pendingAction', card);
-            renderHand();
+            updateHandSelection();
             renderStage();
             document.getElementById('stage-prompt').textContent = '选择要移除黑色情报的玩家';
             return;
@@ -181,7 +181,7 @@ function handleCardTap(wrap, st) {
 
     // ── Transmission Phase ──
     if (g.phase === 'transmission' && isMyTurn && !g.intel.active) {
-        renderHand();
+        updateHandSelection();
         // Need direction for 'any' cards
         if (card.direction === 'any') {
             showDirectionPicker(card);
@@ -205,7 +205,7 @@ function handleCardTap(wrap, st) {
             // Need to pick a swap card — for simplicity, prompt selection
             update('ui.targetMode', 'switch');
             update('ui.pendingAction', card);
-            renderHand();
+            updateHandSelection();
             document.getElementById('stage-prompt').textContent = '再选一张手牌来调包';
             return;
         }
@@ -232,7 +232,7 @@ function handleCardTap(wrap, st) {
         return;
     }
 
-    renderHand();
+    updateHandSelection();
 }
 
 // ── Target Selection ───────────────────────────────────────
@@ -264,7 +264,7 @@ function handleTargetSelect(targetId, st) {
     update('ui.selectedCardId', null);
     update('ui.targetMode', null);
     update('ui.pendingAction', null);
-    renderHand();
+    updateHandSelection();
     renderStage();
 }
 

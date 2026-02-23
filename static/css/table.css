@@ -2,8 +2,8 @@
 
 #table-area {
     position: relative;
-    flex: 0 0 35%;
-    overflow: hidden;
+    flex: 0 0 44%;
+    overflow: visible;
 }
 
 .avatar-wrap {
@@ -28,9 +28,20 @@
     font-weight: 700;
     color: var(--color-text);
     position: relative;
-    transition: border-color 0.3s var(--transition-smooth), box-shadow 0.3s var(--transition-smooth);
+    transition: border-color 0.3s var(--transition-smooth),
+                box-shadow 0.3s var(--transition-smooth),
+                transform 0.3s var(--transition-smooth);
     margin: 0 auto;
     box-shadow: 0 2px 8px rgba(0,60,120,0.1), inset 0 1px 0 rgba(255,255,255,0.7);
+}
+
+.avatar-wrap:hover .avatar {
+    transform: scale(1.1);
+    box-shadow: 0 4px 16px rgba(0,60,120,0.18), inset 0 1px 0 rgba(255,255,255,0.7);
+}
+
+.avatar-wrap:hover .avatar-name {
+    color: var(--color-text);
 }
 
 .avatar-active {
@@ -48,6 +59,14 @@
         inset 0 1px 0 rgba(255,255,255,0.7),
         0 0 0 3px rgba(245, 166, 35, 0.25),
         0 0 12px rgba(245, 166, 35, 0.2);
+}
+
+.avatar-me {
+    border-color: var(--color-accent) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.7),
+        0 0 0 3px rgba(245, 166, 35, 0.30),
+        0 0 10px rgba(245, 166, 35, 0.15);
 }
 
 .avatar-dead {

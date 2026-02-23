@@ -351,3 +351,17 @@ html, body {
     0% { opacity: 1; transform: translateY(0); }
     100% { opacity: 0; transform: translateY(-30px); }
 }
+@keyframes card-deal-in {
+    0% {
+        opacity: 0;
+        transform: translateY(80px) scale(0.6) rotate(15deg);
+    }
+    55% {
+        opacity: 1;
+        transform: translateY(-8px) scale(1.03) rotate(-1deg);
+    }
+    100% {
+        opacity: 1;
+        transform: translateY(0) scale(1) rotate(0deg);
+    }
+}

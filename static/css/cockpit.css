@@ -5,7 +5,7 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    padding: 0 8px 8px;
+    padding: 0 8px 16px;
     min-height: 0;
 }
 
@@ -37,30 +37,45 @@
     z-index: 1;
 }
 
-.hand-card-wrap:hover,
-.hand-card-wrap.card-touched {
-    z-index: 50;
-}
-
 .hand-card-wrap .card {
     transform-origin: bottom center;
-    transition: transform 0.3s var(--transition-smooth), box-shadow 0.3s var(--transition-smooth);
+    transition: transform 0.35s var(--transition-smooth),
+                box-shadow 0.35s var(--transition-smooth);
 }
 
-/* Selected: pop up along card's own rotation axis */
+/* Selected: click to pop up, click again to deselect */
 .hand-card-wrap.card-selected-wrap {
-    transform: var(--fan-rotate, rotate(0deg)) translateY(-24px);
     z-index: 50;
 }
 
 .hand-card-wrap.card-selected-wrap .card {
-    box-shadow: 0 6px 20px rgba(245, 166, 35, 0.35);
+    transform: translateY(-30px) scale(1.05);
+    box-shadow:
+        0 8px 24px rgba(245, 166, 35, 0.4),
+        0 0 20px rgba(245, 166, 35, 0.2);
     border-color: var(--color-accent);
 }
 
-/* Playable glow on wrapper level */
-.hand-card-wrap.card-playable-wrap .card {
-    animation: glow-card 1.5s infinite;
+
+/* Card entrance animation — staggered deal.
+   Use 'backwards' fill (not 'both') so the animation doesn't lock
+   the transform after finishing, which would block click transitions. */
+.hand-card-wrap.card-entering .card {
+    animation: card-deal-in 0.5s var(--transition-smooth) backwards;
+    animation-delay: var(--enter-delay, 0s);
+}
+
+/* Ambient glow under hand */
+#my-hand::after {
+    content: '';
+    position: absolute;
+    bottom: -10px;
+    left: 10%;
+    right: 10%;
+    height: 50px;
+    background: radial-gradient(ellipse at 50% 100%, rgba(41,128,217,0.08) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
 }
 
 /* Empty hand message */
