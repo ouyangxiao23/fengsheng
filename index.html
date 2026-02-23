@@ -1,66 +1,88 @@
 <!DOCTYPE html>
-<html lang="en">
-
+<html lang="zh-CN">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Secret Mission</title>
-  <link rel="stylesheet" href="/static/style.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>绝密行动</title>
+    <link rel="stylesheet" href="/static/css/base.css">
+    <link rel="stylesheet" href="/static/css/cards.css">
+    <link rel="stylesheet" href="/static/css/table.css">
+    <link rel="stylesheet" href="/static/css/stage.css">
+    <link rel="stylesheet" href="/static/css/cockpit.css">
 </head>
+<body class="screen-lobby">
 
-<body>
-  <div id="app">
-    <!-- Status Bar -->
-    <div id="status-bar">
-      <div class="status-left">Room: <span id="room-id">8888</span></div>
-      <div class="status-center" id="game-phase">Wait for players...</div>
-      <div class="status-right"><span id="connection-status" class="status-dot">🟢</span></div>
+    <!-- Lobby Screen -->
+    <div id="lobby-screen">
+        <div class="lobby-container">
+            <h1 class="lobby-title">绝密行动</h1>
+            <p class="lobby-subtitle">Secret Mission</p>
+
+            <div class="lobby-form">
+                <input id="player-name" type="text" placeholder="你的代号..." maxlength="8" autocomplete="off">
+                <div class="lobby-actions">
+                    <button id="btn-create-room" class="btn btn-primary">创建房间</button>
+                    <div class="lobby-join">
+                        <input id="room-code-input" type="text" placeholder="房间号" maxlength="6" autocomplete="off">
+                        <button id="btn-join-room" class="btn btn-secondary">加入</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="lobby-room" class="lobby-room hidden">
+                <div class="room-header">
+                    <span>房间: <strong id="room-id-label"></strong></span>
+                    <span id="player-count-label"></span>
+                </div>
+                <div id="lobby-player-list" class="player-list"></div>
+                <button id="btn-start-game" class="btn btn-accent hidden">开始游戏</button>
+            </div>
+        </div>
     </div>
 
-    <!-- 1. Table Area: Opponents -->
-    <div id="table-area">
-      <!-- Avatars will be injected here JS -->
+    <!-- Game Screen -->
+    <div id="game-screen">
+        <!-- Status Bar -->
+        <div id="status-bar">
+            <span id="room-label"></span>
+            <span id="identity-label"></span>
+        </div>
+
+        <!-- Table: Other Players -->
+        <div id="table-area"></div>
+
+        <!-- Stage: Phase Bar + Intel + Buttons -->
+        <div id="stage-area">
+            <div id="phase-bar">
+                <span class="phase-dot" data-phase="draw">摸牌</span>
+                <span class="phase-dot" data-phase="action">出牌</span>
+                <span class="phase-dot" data-phase="transmission">传递</span>
+                <span class="phase-dot" data-phase="contention">争夺</span>
+                <span class="phase-dot" data-phase="reception">接收</span>
+            </div>
+            <div id="stage-prompt"></div>
+            <div id="intel-card-slot"></div>
+            <div id="stage-buttons"></div>
+        </div>
+
+        <!-- Cockpit: My Hand + Intel -->
+        <div id="cockpit-area">
+            <div id="my-intel-bar"></div>
+            <div id="my-hand"></div>
+        </div>
     </div>
 
-    <!-- 2. Stage Area: Card Animations & Events -->
-    <div id="stage-area">
-      <div class="action-buttons" id="action-buttons" style="display: none;">
-        <button class="btn btn-danger">Reject</button>
-        <button class="btn btn-primary">Receive</button>
-      </div>
+    <!-- Card Modal (tap to inspect) -->
+    <div id="card-modal" class="hidden">
+        <div id="card-modal-backdrop"></div>
+        <div id="card-modal-content"></div>
     </div>
 
-    <!-- 3. Cockpit: My Stats & Hand -->
-    <div id="hand-area">
-      <div id="my-intel" class="my-intel-container">
-        <!-- My Intel Pips injected JS -->
-      </div>
-      <div class="hand-container" id="my-hand">
-        <!-- Cards will be injected here JS -->
-      </div>
-
-      <!-- Hand Actions (Arc Layout) -->
-      <div id="hand-actions" class="hand-actions">
-        <button class="action-btn">Pass</button>
-        <button class="action-btn main-action">Play</button>
-        <button class="action-btn">Lock</button>
-      </div>
-
+    <!-- Game Over Overlay -->
+    <div id="game-over-overlay" class="hidden">
+        <div id="game-over-content"></div>
     </div>
-  </div>
 
-  <!-- Template for Card (Pure CSS) -->
-  <template id="card-template">
-    <div class="card">
-      <div class="card-inner">
-        <div class="card-bg-oval"></div>
-        <div class="card-label"></div>
-        <div class="card-symbol"></div>
-      </div>
-    </div>
-  </template>
-
-  <script src="/static/script.js"></script>
+    <script type="module" src="/static/js/main.js"></script>
 </body>
-
 </html>

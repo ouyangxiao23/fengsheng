@@ -1,176 +1,305 @@
+"""绝密行动 (Secret Mission) — aiohttp WebSocket server.
+
+Serves static files, manages rooms, routes messages to game logic.
+"""
+
 import json
+import asyncio
+import logging
 import os
-import mimetypes
+from aiohttp import web
+import aiohttp
 
-# Global state to store game rooms
-house = {}
+from game_logic import GameState, Phase
 
-async def application(scope, receive, send):
-    """
-    Main ASGI application entry point.
-    """
-    if scope['type'] == 'websocket':
-        await handle_websocket(scope, receive, send)
-    elif scope['type'] == 'http':
-        await handle_http(scope, receive, send)
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger('fengsheng')
 
-async def handle_http(scope, receive, send):
-    """
-    Handle HTTP requests for static files and the main HTML page.
-    """
-    request = await receive()
-    if request['type'] != 'http.request':
-        return
+# Room registry: room_id -> RoomState
+rooms = {}
 
-    path = scope['path']
-    
-    if path.startswith('/static/'):
-        file_path = path.lstrip('/') # remove leading slash to make it relative
-        # Security check to prevent directory traversal
-        full_path = os.path.abspath(file_path)
-        static_root = os.path.abspath('static')
-        
-        if full_path.startswith(static_root) and os.path.exists(full_path) and os.path.isfile(full_path):
-            mime_type, _ = mimetypes.guess_type(full_path)
-            with open(full_path, 'rb') as f:
-                content = f.read()
-            await send({'type': 'http.response.start', 'status': 200, 'headers': [(b'content-type', (mime_type or 'application/octet-stream').encode('utf-8'))]})
-            await send({'type': 'http.response.body', 'body': content})
-        else:
-            await send({'type': 'http.response.start', 'status': 404})
-            await send({'type': 'http.response.body', 'body': b'Not Found'})
-    else:
-        # Serve index.html for main page and client-side routing fallback
-        if os.path.exists('index.html'):
-            with open('index.html', 'rb') as fp:
-                html = fp.read()
-            await send({'type': 'http.response.start', 'status': 200, 'headers': [(b'content-type', b'text/html')]})
-            await send({'type': 'http.response.body', 'body': html})
-        else:
-            await send({'type': 'http.response.start', 'status': 404})
-            await send({'type': 'http.response.body', 'body': b'Index.html not found'})
 
-async def handle_websocket(scope, receive, send):
-    """
-    Handle WebSocket connections for the game logic.
-    """
-    event = await receive()
-    if event['type'] != 'websocket.connect':
-        return
-    await send({'type': 'websocket.accept'})
-    
-    event = await receive()
+class RoomState:
+    def __init__(self, room_id):
+        self.room_id = room_id
+        self.players = {}   # user_id -> {'ws': ws, 'name': str}
+        self.host = None     # user_id of first player (host)
+        self.game = None     # GameState | None
+        self.order = []      # Join order (for seating)
+
+
+# ── HTTP Routes ────────────────────────────────────────────
+
+async def index_handler(request):
+    return web.FileResponse(os.path.join(os.path.dirname(__file__), 'index.html'))
+
+
+async def room_handler(request):
+    return web.FileResponse(os.path.join(os.path.dirname(__file__), 'index.html'))
+
+
+# ── WebSocket Handler ──────────────────────────────────────
+
+async def websocket_handler(request):
+    ws = web.WebSocketResponse()
+    await ws.prepare(request)
+
+    user_id = None
+    room_id = None
+
     try:
-        data = json.loads(event['text'])
-    except (json.JSONDecodeError, KeyError):
-        await send({'type': 'websocket.close', 'code': 4000})
-        return
-
-    # Validate initialization message
-    if data.get('type') != 'EnterRoom' or not data.get('id') or not data.get('room'):
-        await send({'type': 'websocket.close', 'code': 403})
-        return
-
-    room_id = data['room']
-    user_id = data['id']
-    
-    if room_id not in house:
-        house[room_id] = {
-            'black': None,
-            'white': None,
-            'pieces': [],
-            'sends': [],
-            'users': [],
-        }
-    
-    room = house[room_id]
-    old = False
-    
-    # Handle user reconnect or existing user logic
-    if room['black'] == user_id or room['white'] == user_id:
-        old = True
-        if user_id in room['users']:
-            try:
-                # Find the previous connection for this user
-                idx = room['users'].index(user_id)
-                old_send = room['sends'][idx]
-                
-                # Remove old connection info
-                room['sends'].pop(idx)
-                room['users'].pop(idx)
-                
-                # Close the old connection
-                await old_send({'type': 'websocket.close', 'code': 4000})
-            except (ValueError, IndexError):
-                pass
-    else:
-        # Assign roles to new players
-        if room['black'] is None:
-            room['black'] = user_id
-        elif room['white'] is None:
-            room['white'] = user_id
-            
-    visiting = room['black'] != user_id and room['white'] != user_id
-    
-    room['sends'].append(send)
-    room['users'].append(user_id)
-    
-    # Send initial state
-    await send({'type': 'websocket.send', 'text': json.dumps({
-        'type': 'InitializeRoomState',
-        'pieces': room['pieces'],
-        'visiting': visiting,
-        'black': room['black'] == user_id if not visiting else bool(len(room['pieces']) % 2),
-        'ready': bool(room['black'] and room['white']),
-    })})
-
-    # Notify others if a player (re)connected
-    if not old and (room['black'] == user_id or room['white'] == user_id):
-        notification = json.dumps({
-            'type': 'AddPlayer',
-            'ready': bool(room['black'] and room['white']),
-        })
-        for _send in room['sends']:
-            if _send == send:
-                continue
-            await _send({'type': 'websocket.send', 'text': notification})
-
-    # Main game loop
-    try:
-        while True:
-            event = await receive()
-            if event['type'] == 'websocket.disconnect':
-                break
-            
-            if 'text' in event:
+        async for msg in ws:
+            if msg.type == aiohttp.WSMsgType.TEXT:
                 try:
-                    data = json.loads(event['text'])
-                    if data.get('type') == 'DropPiece':
-                        room['pieces'].append((data['x'], data['y']))
-                        # Broadcast move to others
-                        move_data = json.dumps({
-                            'type': 'DropPiece',
-                            'x': data['x'],
-                            'y': data['y'],
-                        })
-                        for _send in room['sends']:
-                            if _send == send:
-                                continue
-                            await _send({'type': 'websocket.send', 'text': move_data})
+                    data = json.loads(msg.data)
                 except json.JSONDecodeError:
-                    pass
+                    await ws.send_json({'type': 'error', 'message': 'Invalid JSON'})
+                    continue
+
+                msg_type = data.get('type')
+
+                if msg_type == 'enter_room':
+                    user_id = data.get('id')
+                    room_id = data.get('room')
+                    name = data.get('name', 'Player')
+                    await handle_enter_room(ws, user_id, room_id, name)
+
+                elif not user_id or not room_id:
+                    await ws.send_json({'type': 'error', 'message': '请先加入房间'})
+
+                elif msg_type == 'start_game':
+                    await handle_start_game(user_id, room_id)
+
+                elif msg_type == 'action_play_card':
+                    await handle_game_action(user_id, room_id, 'play_action_card',
+                                             card_id=data.get('card_id'),
+                                             target_id=data.get('target_id'))
+
+                elif msg_type == 'action_done':
+                    await handle_game_action(user_id, room_id, 'end_action_phase')
+
+                elif msg_type == 'transmit_card':
+                    await handle_game_action(user_id, room_id, 'transmit_intel',
+                                             card_id=data.get('card_id'),
+                                             direction=data.get('direction'),
+                                             lock_target=data.get('lock_target'))
+
+                elif msg_type == 'accept_intel':
+                    await handle_game_action(user_id, room_id, 'accept_intel')
+
+                elif msg_type == 'pass_intel':
+                    await handle_game_action(user_id, room_id, 'pass_intel')
+
+                elif msg_type == 'contention_play':
+                    await handle_game_action(user_id, room_id, 'play_contention_card',
+                                             card_id=data.get('card_id'),
+                                             extra=data.get('swap_card_id'))
+
+                elif msg_type == 'contention_pass':
+                    await handle_game_action(user_id, room_id, 'pass_contention')
+
+                elif msg_type == 'clarify_play':
+                    await handle_game_action(user_id, room_id, 'play_clarify_rescue',
+                                             card_id=data.get('card_id'))
+
+                elif msg_type == 'clarify_pass':
+                    await handle_game_action(user_id, room_id, 'pass_rescue')
+
+                elif msg_type == 'death_gift':
+                    await handle_game_action(user_id, room_id, 'death_gift',
+                                             card_ids=data.get('card_ids', []),
+                                             recipient_id=data.get('recipient_id'))
+
+            elif msg.type == aiohttp.WSMsgType.ERROR:
+                log.error('WebSocket error: %s', ws.exception())
+
     finally:
-        # Cleanup connection
-        if room_id in house:
-            room = house[room_id]
-            if send in room['sends']:
+        if user_id and room_id:
+            await handle_disconnect(user_id, room_id)
+
+    return ws
+
+
+# ── Room Management ────────────────────────────────────────
+
+async def handle_enter_room(ws, user_id, room_id, name):
+    if room_id not in rooms:
+        rooms[room_id] = RoomState(room_id)
+
+    room = rooms[room_id]
+
+    # Reconnection: if user already in room, replace ws
+    is_reconnect = user_id in room.players
+    room.players[user_id] = {'ws': ws, 'name': name}
+
+    if not is_reconnect:
+        room.order.append(user_id)
+        if room.host is None:
+            room.host = user_id
+
+    # If game is running, send state sync
+    if room.game and room.game.phase != Phase.WAITING:
+        state = room.game.get_state_for_player(user_id)
+        if state:
+            await ws.send_json(state)
+            return
+
+    # Send room state to all
+    await broadcast_room_state(room)
+
+
+async def broadcast_room_state(room):
+    player_list = []
+    for uid in room.order:
+        if uid in room.players:
+            player_list.append({
+                'id': uid,
+                'name': room.players[uid]['name'],
+                'is_host': uid == room.host,
+            })
+
+    can_start = len(player_list) >= 2  # Lowered for testing; should be 5
+
+    for uid, p in room.players.items():
+        try:
+            await p['ws'].send_json({
+                'type': 'room_state',
+                'room_id': room.room_id,
+                'players': player_list,
+                'can_start': can_start and uid == room.host,
+                'is_host': uid == room.host,
+            })
+        except Exception:
+            pass
+
+
+async def handle_start_game(user_id, room_id):
+    room = rooms.get(room_id)
+    if not room:
+        return
+
+    if user_id != room.host:
+        ws = room.players[user_id]['ws']
+        await ws.send_json({'type': 'error', 'message': '只有房主可以开始游戏'})
+        return
+
+    if len(room.order) < 2:  # Lowered for testing; should be 5
+        ws = room.players[user_id]['ws']
+        await ws.send_json({'type': 'error', 'message': '需要至少2名玩家'})
+        return
+
+    # Create game
+    player_ids = [uid for uid in room.order if uid in room.players]
+    player_names = [room.players[uid]['name'] for uid in player_ids]
+    room.game = GameState(player_ids, player_names)
+
+    try:
+        events = room.game.setup()
+        await route_events(room, events)
+    except Exception as e:
+        log.exception('Error during game setup')
+        room.game = None
+        ws = room.players[user_id]['ws']
+        await ws.send_json({'type': 'error', 'message': f'游戏启动失败: {e}'})
+
+
+async def handle_game_action(user_id, room_id, method_name, **kwargs):
+    room = rooms.get(room_id)
+    if not room or not room.game:
+        return
+
+    method = getattr(room.game, method_name, None)
+    if not method:
+        return
+
+    try:
+        events = method(user_id, **kwargs)
+        await route_events(room, events)
+    except Exception as e:
+        log.exception('Error in game action %s', method_name)
+        p = room.players.get(user_id)
+        if p:
+            try:
+                await p['ws'].send_json({'type': 'error', 'message': f'操作失败: {e}'})
+            except Exception:
+                pass
+
+
+async def handle_disconnect(user_id, room_id):
+    room = rooms.get(room_id)
+    if not room:
+        return
+
+    if user_id in room.players:
+        del room.players[user_id]
+
+    # If no game running, remove from order and clean up
+    if not room.game or room.game.phase == Phase.WAITING:
+        if user_id in room.order:
+            room.order.remove(user_id)
+        if room.host == user_id and room.order:
+            room.host = room.order[0]
+
+        if not room.players:
+            del rooms[room_id]
+            return
+
+        await broadcast_room_state(room)
+    else:
+        # Game running — notify others player disconnected
+        await broadcast(room, {
+            'type': 'player_disconnected',
+            'player_id': user_id,
+        })
+
+
+# ── Event Routing ──────────────────────────────────────────
+
+async def route_events(room, events):
+    for event in events:
+        target = event['target']
+        msg = event['msg']
+
+        if target == 'all':
+            await broadcast(room, msg)
+        elif target.startswith('all_except:'):
+            exclude = set(target.split(':')[1].split(','))
+            await broadcast(room, msg, exclude=exclude)
+        else:
+            # Single player
+            p = room.players.get(target)
+            if p:
                 try:
-                    idx = room['sends'].index(send)
-                    room['sends'].pop(idx)
-                    room['users'].pop(idx)
-                except ValueError:
+                    await p['ws'].send_json(msg)
+                except Exception:
                     pass
-            
-            # If room is empty, remove it to save memory
-            if len(room['pieces']) == 0 and len(room['sends']) == 0:
-                del house[room_id]
+
+
+async def broadcast(room, msg, exclude=None):
+    exclude = exclude or set()
+    for uid, p in room.players.items():
+        if uid not in exclude:
+            try:
+                await p['ws'].send_json(msg)
+            except Exception:
+                pass
+
+
+# ── App Factory ────────────────────────────────────────────
+
+def create_app():
+    app = web.Application()
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    static_dir = os.path.join(base_dir, 'static')
+
+    app.router.add_get('/ws', websocket_handler)
+    app.router.add_get('/', index_handler)
+    app.router.add_get('/room/{room_id}', room_handler)
+    app.router.add_static('/static/', static_dir)
+
+    return app
+
+
+if __name__ == '__main__':
+    app = create_app()
+    web.run_app(app, host='0.0.0.0', port=8080)

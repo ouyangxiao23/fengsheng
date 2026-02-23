@@ -1,0 +1,140 @@
+/* Card rendering — dual-purpose design */
+
+.card {
+    width: var(--card-w);
+    height: var(--card-h);
+    border-radius: 6px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    font-size: 11px;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+    flex-shrink: 0;
+    border: 1.5px solid rgba(255,255,255,0.15);
+    user-select: none;
+}
+
+/* Intel color backgrounds */
+.card-red    { background: linear-gradient(135deg, #c0392b 0%, #e74c3c 50%, #c0392b 100%); }
+.card-blue   { background: linear-gradient(135deg, #2471a3 0%, #3498db 50%, #2471a3 100%); }
+.card-black  { background: linear-gradient(135deg, #1c2833 0%, #2c3e50 50%, #1c2833 100%); }
+
+/* Card interior layout */
+.card-corner {
+    position: absolute;
+    font-size: 8px;
+    width: 14px; height: 14px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 50%;
+    background: rgba(0,0,0,0.3);
+}
+.card-corner-tl { top: 3px; left: 3px; }
+.card-corner-br { bottom: 3px; right: 3px; }
+
+.card-corner .pip-red    { color: #ff6b6b; }
+.card-corner .pip-blue   { color: #74b9ff; }
+.card-corner .pip-black  { color: #95a5a6; }
+
+.card-banner {
+    background: rgba(0,0,0,0.45);
+    text-align: center;
+    padding: 3px 2px;
+    font-weight: 700;
+    font-size: 11px;
+    color: #fff;
+    letter-spacing: 1px;
+}
+
+.card-icon {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.4));
+}
+
+.card-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 2px 5px 4px;
+    font-size: 9px;
+    color: rgba(255,255,255,0.7);
+}
+
+.card-phase-tag {
+    background: rgba(0,0,0,0.35);
+    padding: 1px 4px;
+    border-radius: 2px;
+    font-size: 8px;
+}
+
+.card-attrs {
+    display: flex; gap: 2px;
+    font-size: 12px;
+}
+
+/* Card back */
+.card-back {
+    width: var(--card-w);
+    height: var(--card-h);
+    border-radius: 6px;
+    background:
+        repeating-linear-gradient(
+            45deg,
+            #1a1a2e 0px, #1a1a2e 4px,
+            #222240 4px, #222240 8px
+        );
+    border: 1.5px solid rgba(255,255,255,0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.card-back::after {
+    content: '密';
+    font-size: 24px;
+    color: rgba(255,255,255,0.15);
+    font-weight: 700;
+}
+
+/* Card states */
+.card-selected {
+    transform: translateY(-16px) !important;
+    box-shadow: 0 4px 16px rgba(241, 196, 15, 0.5);
+    border-color: var(--color-accent);
+}
+
+.card-playable {
+    animation: glow-card 1.5s infinite;
+}
+
+.card-dimmed {
+    opacity: 0.4;
+    pointer-events: none;
+}
+
+/* Mini card (for intel area display) */
+.intel-pip {
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    display: inline-block;
+    border: 1px solid rgba(255,255,255,0.3);
+}
+.intel-pip-red   { background: var(--color-red); }
+.intel-pip-blue  { background: var(--color-blue); }
+.intel-pip-black { background: var(--color-black-intel); }
+
+/* Large intel pip (my intel bar) */
+.my-intel-pip {
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    display: inline-block;
+    border: 2px solid rgba(255,255,255,0.3);
+}
+.my-intel-pip-red   { background: var(--color-red); }
+.my-intel-pip-blue  { background: var(--color-blue); }
+.my-intel-pip-black { background: var(--color-black-intel); }

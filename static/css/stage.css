@@ -1,0 +1,122 @@
+/* Stage area — phase bar, intel slot, action buttons */
+
+#stage-area {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 8px 12px;
+    gap: 6px;
+    min-height: 120px;
+    position: relative;
+}
+
+/* Phase bar */
+#phase-bar {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+}
+
+.phase-dot {
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 10px;
+    background: var(--color-surface);
+    color: var(--color-muted);
+    border: 1px solid var(--color-border);
+    transition: all 0.3s;
+}
+
+.phase-dot.phase-active {
+    background: var(--color-accent);
+    color: #000;
+    font-weight: 700;
+    border-color: var(--color-accent);
+}
+
+.phase-dot.phase-done {
+    background: var(--color-surface2);
+    color: var(--color-muted);
+    opacity: 0.5;
+}
+
+/* Stage prompt */
+#stage-prompt {
+    font-size: 13px;
+    color: var(--color-text);
+    text-align: center;
+    min-height: 20px;
+}
+
+/* Intel card slot */
+#intel-card-slot {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 40px;
+}
+
+/* Stage buttons */
+#stage-buttons {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+#stage-buttons .btn {
+    min-width: 70px;
+}
+
+/* Direction selector */
+.direction-selector {
+    display: flex;
+    gap: 8px;
+}
+
+.direction-btn {
+    padding: 8px 16px;
+    border-radius: var(--radius);
+    background: var(--color-surface2);
+    border: 1px solid var(--color-border);
+    color: var(--color-text);
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.direction-btn:active {
+    background: var(--color-accent);
+    color: #000;
+}
+
+/* Target selector overlay */
+.target-mode #table-area .avatar-wrap {
+    cursor: pointer;
+}
+
+.target-mode #table-area .avatar {
+    border-color: var(--color-danger);
+    box-shadow: 0 0 8px rgba(231, 76, 60, 0.3);
+}
+
+/* Probe result popup */
+.probe-result {
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    background: var(--color-surface);
+    border: 2px solid var(--color-accent);
+    border-radius: var(--radius);
+    padding: 20px 32px;
+    z-index: 80;
+    text-align: center;
+    font-size: 16px;
+}
+
+.probe-result .identity-reveal {
+    font-size: 20px;
+    font-weight: 700;
+    margin-top: 8px;
+}

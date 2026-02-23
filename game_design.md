@@ -7,45 +7,63 @@
 **Platform**: Mobile Web (Touch optimized)
 
 ### 1.1 Core Concept
-Players act as agents belonging to three opposing factions. The objective is to collect Intelligence cards of your faction's color or fulfill a secret mission, while navigating a web of deceit, passing false intelligence, and intercepting critical messages.
+Players act as agents belonging to three opposing factions. The game uses a **single unified deck** — every card has both an **Action function** (e.g., Intercept, Probe, Clarify) and an **Intelligence color** (Red, Blue, or Black). A card can be played for its action effect *or* passed face-down as intelligence, but not both — choosing how to use each card is the core tension.
+
+The objective is to collect cards of your faction's intelligence color in your Intelligence Area, while using action abilities to manipulate, intercept, and deceive.
 
 ### 1.2 Factions & Winning Conditions
-*   **🔴 The Resistance (潜伏战线)**: Team wins if *any* Resistance member collects **3 Red Intelligence** cards.
-*   **🔵 The Agency (特工机关)**: Team wins if *any* Agency member collects **3 Blue Intelligence** cards.
-*   **🟢 The Mystics (神秘人)**: Individual win conditions (varies by role card, e.g., "Survival", "collect specific cards").
+*   **🔴 The Resistance (潜伏战线)**: Team wins if *any* Resistance member collects **3 cards with Red intelligence color** in their Intelligence Area.
+*   **🔵 The Agency (特工机关)**: Team wins if *any* Agency member collects **3 cards with Blue intelligence color** in their Intelligence Area.
+*   **🟢 The Mystics (神秘人)**: Individual win conditions (varies by identity card, e.g., "Survival", "collect specific cards").
 
 ### 1.3 Setup
 1.  **Identity Distribution**: Hidden identities are dealt facedown.
     *   *Note*: In 6/8 player games, extra Mystic cards are shuffled in to add uncertainty.
-2.  **Starting Hand**: 3 cards per player.
+2.  **Starting Hand**: 3 cards per player from the shared deck.
 3.  **Turn Order**: Determined by random "Priority Token" (e.g., player with the poem card goes first), proceeds counter-clockwise.
 
-### 1.4 Turn Phases
+### 1.4 Card Anatomy (Unified Deck)
+Every card in the shared deck has **two aspects**:
+*   **Intelligence Color**: Red 🔴, Blue 🔵, or Black ⚫ — this is the card's identity when it sits in a player's Intelligence Area. It determines win/death conditions.
+*   **Action Function**: A named ability (e.g., *Probe*, *Intercept*, *Clarify*) with a specific phase restriction (playable during "Action Phase" or "Contention Phase") — this is the card's identity when played from hand for its effect.
+
+A single card can only be used **one way** per turn: either played for its action, or sent as intelligence. This creates constant tension — a powerful action card might also be the intelligence color you desperately need (or desperately want to avoid receiving).
+
+**Card Attributes:**
+*   **Direction Arrow** (↙ Left / ↘ Right / ↕ Any): Determines which way the card travels when sent as intelligence.
+*   **Lock Icon** 🔒: If present, the sender can designate a specific player who *must* accept the intelligence.
+*   **Hidden Icon** 🙈: If present, the action card must be played face-down.
+
+### 1.5 Turn Phases
 Each player's turn consists of 5 strict phases:
 
-1.  **Draw Phase**: Draw 2 cards from the deck.
+1.  **Draw Phase**: Draw **3 cards** from the deck.
 2.  **Action Phase**:
-    *   Player may play "Action" type cards (e.g., *Probe*, *Coerce*).
-    *   *Hidden Actions*: Some cards are played facedown.
+    *   Player may play any number of hand cards for their **action function**, if the card is marked "Action Phase" (e.g., *Probe*, *Coerce*).
+    *   *Hidden Actions*: Cards with the 🙈 icon are played face-down.
+    *   Used action cards go to the discard pile.
 3.  **Transmission Phase (Mandatory)**:
-    *   Player **MUST** choose 1 card from hand to send as Intelligence.
-    *   **Direction**: Choose to send Left or Right (unless card specifies otherwise).
-    *   **Targeting**: If card has "Lock" attribute, sender specifies a mandatory receiver.
-    *   *Failure penalty*: If a player has no cards to transmit, they are immediately **Eliminated**.
+    *   Player **MUST** choose 1 hand card and send it **face-down** as intelligence.
+    *   The card's **intelligence color** (not its action) is what matters — it will be revealed when received.
+    *   **Direction**: Follows the card's direction arrow (Left / Right / Any).
+    *   **Targeting**: If the card has the 🔒 Lock icon, sender designates a player who *must* accept.
+    *   Players along the path may choose to "accept" or "pass along" the intelligence.
+    *   If the intelligence circles back to the sender, they must accept it themselves.
+    *   *Failure penalty*: If a player has **no hand cards** to transmit, they are immediately **Eliminated**.
 4.  **Contention Phase**:
-    *   While the Intelligence is travelling, other players may play "Interruption" cards (e.g., *Intercept*, *Switch*).
-    *   This is a "stack" based interaction where players vie for the intelligence.
+    *   Once a player declares they will accept the intelligence, all players may play hand cards marked "Contention Phase" for their **action function** (e.g., *Intercept*, *Switch*).
+    *   Players take turns deciding whether to play contention cards, until all pass.
 5.  **Reception Phase**:
-    *   If a player accepts (or is forced to accept) the Intelligence, it is revealed and placed in their **Intelligence Area**.
-    *   **Win Check**: Check immediately if the new card triggers a Win Condition.
-    *   **Death Check**: If a player has **3 Black Intelligence**, they enter "Dying State".
+    *   The intelligence card is **flipped face-up** and placed in the receiver's **Intelligence Area**. Its intelligence color is now public.
+    *   **Win Check**: Immediately check if this triggers a Win Condition (3 Red or 3 Blue of matching faction).
+    *   **Death Check**: If the receiver now has **3 Black intelligence cards**, they enter "Dying State".
 
-### 1.5 Death & Elimination
-*   **Trigger**: Collecting 3 Black Intelligence cards.
-*   **Rescue**: Dying player asks for a *Clarify* cure card. If none played, player dies.
-*   **Death Rattle**: 
-    1.  Dying player may gift up to 3 hand cards to *one* other player.
-    2.  Remaining hand and Intelligence cards are discarded.
+### 1.6 Death & Elimination
+*   **Trigger**: Collecting 3 cards with Black intelligence color in Intelligence Area.
+*   **Rescue**: Starting from the current player, going counter-clockwise, each player is asked whether they will play a *Clarify* card (using its action function). If someone does and it removes a black card, the player survives. If no one helps, the player **dies**.
+*   **Death Rattle**:
+    1.  Dying player may gift up to 3 hand cards to *one* other living player.
+    2.  Remaining hand cards and all Intelligence Area cards are discarded face-up.
     3.  **Identity remains hidden.**
 *   **Ghost Win**: Resistance/Agency players share the team victory even after death.
 
@@ -72,8 +90,8 @@ This area visualizes the other players.
     *   **Portrait**: Character image (greyscale by default, colored if dead/revealed).
     *   **Status Badges**:
         *   🃏 **Hand Count**: Number icon (e.g., "x3").
-        *   💼 **Intel Track**: Mini-pip indicators below avatar:
-            *   🔴 (Red count) | 🔵 (Blue count) | ⚫ (Black count)
+        *   💼 **Intel Track**: Mini-pip indicators below avatar showing received intelligence colors:
+            *   🔴 (Red count) | 🔵 (Blue count) | ⚫ (Black count) — all public info since received cards are flipped face-up.
     *   **Active Indicator**: Glowing border around the current turn player.
     *   **Interaction**: Tap avatar to target (for actions like "Lock on Player").
 
@@ -145,15 +163,19 @@ Instead of static images, we use a CSS-heavy "Seat" component:
 *   **Reactions**: Floating Emoji bubbles (e.g., 😭, 🤔) that appear near the avatar for non-verbal communication.
 *   **Hand Count**: A clearly visible number (e.g., "7") next to a mini-card icon, crucial for determining threat levels.
 
-#### 3.2 Card Engineering (Pure CSS)
-We will replicate the asset-free card design:
+#### 3.2 Card Engineering (Pure CSS, Dual-Purpose Design)
+Every card must clearly communicate **two identities**: its intelligence color and its action function.
 *   **Dimensions**: Base size `85px x 132px` (Ratio ~0.64).
-*   **Scaling**: This base size is scaled down using `transform: scale(0.5)` for hand cards and `scale(0.3)` for table history to fit mobile screens.
-*   **Composition**:
-    *   `.card-bg`: A skewed white oval (`rotate(30deg)`) creates the classic card look.
-    *   `.card-icon`: Central big emoji/text (e.g., 🛡️ for Defend, 🎯 for Lock).
-    *   `.card-corner`: Small number/icon in top-left/bottom-right.
-    *   **Colors**: defined by utility classes `.bg-red-500`, `.bg-blue-500`, `.bg-gray-800`.
+*   **Scaling**: Scaled down using `transform: scale(0.5)` for hand cards and `scale(0.3)` for Intelligence Area to fit mobile screens.
+*   **Card Front Composition**:
+    *   `.card-bg`: Background color = **intelligence color** (`bg-red-500` / `bg-blue-500` / `bg-gray-800`). This is the dominant visual — you can tell a card's intel color at a glance.
+    *   `.card-action-name`: Top banner showing the action name (e.g., "截获 Intercept", "试探 Probe").
+    *   `.card-icon`: Central big emoji/icon for the action (e.g., 🛡️ for Clarify, 🎯 for Lock, 🔄 for Switch).
+    *   `.card-phase-tag`: Small tag indicating when the action can be played: "出牌阶段" (Action Phase) or "争夺阶段" (Contention Phase).
+    *   `.card-direction`: Arrow icon in corner showing intelligence direction (↙ / ↘ / ↕).
+    *   `.card-lock`: 🔒 icon if the card has the Lock attribute.
+    *   `.card-corner`: Top-left and bottom-right corners repeat the intel color pip for quick scanning in a fanned hand.
+*   **Card Back**: Uniform design (no information revealed) — critical since intelligence is sent face-down.
 
 #### 3.3 The Hand (Fanned Layout)
 *   **Container**: `overflow-x: auto` allows scrolling if the hand is huge.
@@ -169,5 +191,8 @@ We will replicate the asset-free card design:
 *   **Direction Indicator**: A central arrow icon (`clip-path` animated) clearly shows the current direction of intelligence transmission (Clockwise/Counter-clockwise).
 
 #### 3.5 The "Stage" (Center Area)
-*   **Active Intel**: The card currently being transmitted sits in the absolute center.
-*   **Action Buttons**: Context-sensitive buttons (RECEIVE / PASS) appear *below* this central card, easily reachable by thumb.
+*   **Active Intel**: The card currently being transmitted sits in the absolute center, shown **face-down** (card back visible). No one knows the intelligence color until it is received and flipped.
+*   **Transmission Path**: Animated trail showing the card's journey from sender through each player along the direction.
+*   **Action Buttons**: Context-sensitive buttons appear *below* the central card, easily reachable by thumb:
+    *   During Transmission: `[ ACCEPT ]` `[ PASS ]` (for the player the card is currently facing)
+    *   During Contention: `[ PLAY CARD ]` (for all players holding valid contention-phase cards)
