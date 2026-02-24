@@ -12,6 +12,8 @@ export function initLobby() {
     const nameInput = document.getElementById('player-name');
     const codeInput = document.getElementById('room-code-input');
 
+    fetchLanInfo();
+
     btnCreate.addEventListener('click', () => {
         const name = nameInput.value.trim() || '特工';
         const roomId = generateRoomCode();
@@ -94,4 +96,21 @@ function generateRoomCode() {
         code += chars[Math.floor(Math.random() * chars.length)];
     }
     return code;
+}
+
+async function fetchLanInfo() {
+    const el = document.getElementById('lan-info');
+    if (!el) return;
+    try {
+        const res = await fetch('/api/host-info');
+        const info = await res.json();
+        const addr = info.port === 80
+            ? `http://${info.ip}`
+            : `http://${info.ip}:${info.port}`;
+        el.innerHTML =
+            `局域网多人游戏 — 同一网络下的玩家访问:` +
+            `<span class="lan-addr">${addr}</span>`;
+    } catch {
+        el.classList.add('hidden');
+    }
 }

@@ -7,6 +7,7 @@ import json
 import asyncio
 import logging
 import os
+import socket
 from aiohttp import web
 import aiohttp
 
@@ -88,6 +89,28 @@ async def room_handler(request):
     return web.FileResponse(os.path.join(os.path.dirname(__file__), 'index.html'))
 
 
+def _get_local_ip():
+    """Get the machine's LAN IP address."""
+    try:
+        # Connect to an external address to determine which interface is used
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(0.1)
+        s.connect(('8.8.8.8', 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return '127.0.0.1'
+
+
+async def host_info_handler(request):
+    port = request.app.get('_port', 8080)
+    return web.json_response({
+        'ip': _get_local_ip(),
+        'port': port,
+    })
+
+
 # ── WebSocket Handler ──────────────────────────────────────
 
 async def websocket_handler(request):
@@ -149,10 +172,6 @@ async def websocket_handler(request):
                 elif msg_type == 'decoy_direction':
                     await handle_game_action(user_id, room_id, 'resolve_decoy_direction',
                                              direction=data.get('direction'))
-
-                elif msg_type == 'switch_card':
-                    await handle_game_action(user_id, room_id, 'resolve_switch_card',
-                                             swap_card_id=data.get('card_id'))
 
                 elif msg_type == 'coerce_response':
                     await handle_game_action(user_id, room_id, 'resolve_coerce_response',
@@ -364,6 +383,7 @@ def create_app():
     static_dir = os.path.join(base_dir, 'static')
 
     app.router.add_get('/ws', websocket_handler)
+    app.router.add_get('/api/host-info', host_info_handler)
     app.router.add_get('/', index_handler)
     app.router.add_get('/room/{room_id}', room_handler)
     app.router.add_static('/static/', static_dir)
@@ -372,5 +392,7 @@ def create_app():
 
 
 if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 8080))
     app = create_app()
-    web.run_app(app, host='0.0.0.0', port=8080)
+    app['_port'] = port
+    web.run_app(app, host='0.0.0.0', port=port)

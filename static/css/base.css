@@ -113,6 +113,29 @@ html, body {
     font-size: 12px; letter-spacing: 2px;
     margin-bottom: 32px;
 }
+/* LAN info */
+.lan-info {
+    margin-bottom: 16px;
+    padding: 8px 12px;
+    background: rgba(41, 128, 217, 0.08);
+    border: 1px solid rgba(41, 128, 217, 0.15);
+    border-radius: var(--radius-sm);
+    font-size: 11px;
+    color: var(--color-muted);
+    line-height: 1.5;
+}
+.lan-info .lan-addr {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 600;
+    color: #1a5276;
+    margin-top: 2px;
+    user-select: all;
+    -webkit-user-select: all;
+    letter-spacing: 0.5px;
+}
+
 .lobby-form input {
     width: 100%;
     padding: 10px 14px;

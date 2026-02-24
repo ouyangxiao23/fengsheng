@@ -38,11 +38,11 @@ const state = {
             active: false,
             timerSeconds: 0,
             timerPaused: false,
-            pendingEffect: null,    // 'decoy' | 'switch' | null
+            pendingEffect: null,    // 'decoy' | null
             pendingPlayer: null,
-            revealedIntel: null,    // intel card shown during switch
         },
         dying: { active: false, player: null, askingPlayer: null },
+        coercePending: null,  // { coercer, target, cardType } when coerce is in progress
 
         log: [],
     },
@@ -53,6 +53,7 @@ const state = {
         targetMode: null,       // null | 'probe' | 'coerce' | 'coerce_type' | 'coerce_give' | 'clarify' | 'clarify_pick' | 'transmit_target' | 'gift'
         pendingAction: null,    // card awaiting target selection
         pendingExtra: null,     // {targetId, cardType, intelCards, matchingIds} for multi-step flows
+        transmittedCardId: null, // card ID being transmitted (for hand removal on confirmation)
         giftCards: [],          // selected card IDs for death gift
         giftRecipient: null,
     },

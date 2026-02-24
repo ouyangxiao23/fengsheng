@@ -4,8 +4,8 @@
 
 import { getState, update, subscribe, getOrCreateUserId } from './state.js';
 import { initLobby, renderLobby } from './lobby.js';
-import { renderAll, installResizeObservers } from './render.js';
-import { bindActions } from './actions.js';
+import { renderAll, installResizeObservers } from './render/index.js';
+import { bindActions } from './actions/index.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     // Set user ID

@@ -3,13 +3,17 @@
  */
 
 import { getState, update, getOrCreateUserId } from './state.js';
-import { handleServerMessage } from './gameManager.js';
+import { handleServerMessage } from './messageRouter.js';
 
 let ws = null;
 let reconnectTimer = null;
 
 export function connectWebSocket(roomId) {
     if (ws) {
+        // Detach handlers before closing so the old socket's onclose
+        // doesn't schedule a stale reconnect that kills the new connection.
+        ws.onclose = null;
+        ws.onerror = null;
         ws.close();
         ws = null;
     }
