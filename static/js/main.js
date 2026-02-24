@@ -4,7 +4,7 @@
 
 import { getState, update, subscribe, getOrCreateUserId } from './state.js';
 import { initLobby, renderLobby } from './lobby.js';
-import { renderAll } from './render.js';
+import { renderAll, installResizeObservers } from './render.js';
 import { bindActions } from './actions.js';
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -30,6 +30,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (state.game.started && document.body.className !== 'screen-game') {
             document.body.className = 'screen-game';
             renderAll();
+            installResizeObservers();
         }
     });
 });

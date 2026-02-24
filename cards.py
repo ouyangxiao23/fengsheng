@@ -4,7 +4,7 @@ Each card has dual identity:
 - Intelligence color (red/blue/black) — matters when received as intel
 - Action function — matters when played from hand for its effect
 
-54 cards total: 18 red, 18 blue, 18 black.
+42 cards total: 14 red, 14 blue, 14 black.
 """
 
 import random
@@ -15,11 +15,8 @@ PROBE = 'probe'           # 试探: look at target's identity
 COERCE = 'coerce'         # 威逼: target reveals or gives 1 hand card
 INTERCEPT = 'intercept'   # 截获: become the receiver
 SWITCH = 'switch'         # 调包: swap intel with a hand card
-CLARIFY = 'clarify'       # 澄清: remove 1 black intel from a player
+CLARIFY = 'clarify'       # 澄清: remove 1 intel of any color from a player
 DECOY = 'decoy'           # 误导: reverse intel direction
-BURN = 'burn'             # 烧毁: peek; discard if color matches receiver's area
-SECRET_ORDER = 'secret_order'  # 密令: draw 1 extra card
-RETURN = 'return'         # 退回: send intel back to sender
 
 # Phase restrictions
 ACTION = 'action'
@@ -28,7 +25,7 @@ CONTENTION = 'contention'
 # Directions
 LEFT = 'left'
 RIGHT = 'right'
-ANY = 'any'
+STRAIGHT = 'straight'
 
 # Card template helper
 def _card(id_str, color, action, action_cn, phase, direction,
@@ -47,90 +44,72 @@ def _card(id_str, color, action, action_cn, phase, direction,
     }
 
 
-# Full deck: 54 cards
-# Distribution: 18 red, 18 blue, 18 black
+# Full deck: 42 cards
+# Distribution: 14 red, 14 blue, 14 black
 # Action types distributed across colors for balance
 CARD_DEFINITIONS = [
-    # === 试探 Probe (8 cards) — Action Phase, hidden ===
-    _card('probe_r1', 'red',   'Probe', '试探', ACTION, LEFT,  '探', hidden=True),
+    # === 试探 Probe (6 cards) — Action Phase, hidden ===
+    _card('probe_r1', 'red',   'Probe', '试探', ACTION, LEFT,  '探', lock=True, hidden=True),
     _card('probe_r2', 'red',   'Probe', '试探', ACTION, RIGHT, '探', hidden=True),
-    _card('probe_r3', 'red',   'Probe', '试探', ACTION, ANY,   '探', hidden=True),
-    _card('probe_b1', 'blue',  'Probe', '试探', ACTION, LEFT,  '探', hidden=True),
+    _card('probe_b1', 'blue',  'Probe', '试探', ACTION, LEFT,  '探', lock=True, hidden=True),
     _card('probe_b2', 'blue',  'Probe', '试探', ACTION, RIGHT, '探', hidden=True),
-    _card('probe_b3', 'blue',  'Probe', '试探', ACTION, ANY,   '探', hidden=True),
-    _card('probe_k1', 'black', 'Probe', '试探', ACTION, LEFT,  '探', hidden=True),
+    _card('probe_k1', 'black', 'Probe', '试探', ACTION, LEFT,  '探', lock=True, hidden=True),
     _card('probe_k2', 'black', 'Probe', '试探', ACTION, RIGHT, '探', hidden=True),
 
     # === 威逼 Coerce (6 cards) — Action Phase, hidden ===
     _card('coerce_r1', 'red',   'Coerce', '威逼', ACTION, LEFT,  '逼', hidden=True),
-    _card('coerce_r2', 'red',   'Coerce', '威逼', ACTION, RIGHT, '逼', hidden=True),
+    _card('coerce_r2', 'red',   'Coerce', '威逼', ACTION, RIGHT, '逼', lock=True, hidden=True),
     _card('coerce_b1', 'blue',  'Coerce', '威逼', ACTION, LEFT,  '逼', hidden=True),
-    _card('coerce_b2', 'blue',  'Coerce', '威逼', ACTION, RIGHT, '逼', hidden=True),
-    _card('coerce_k1', 'black', 'Coerce', '威逼', ACTION, ANY,   '逼', hidden=True),
+    _card('coerce_b2', 'blue',  'Coerce', '威逼', ACTION, RIGHT, '逼', lock=True, hidden=True),
+    _card('coerce_k1', 'black', 'Coerce', '威逼', ACTION, STRAIGHT, '逼', hidden=True),
     _card('coerce_k2', 'black', 'Coerce', '威逼', ACTION, RIGHT, '逼', hidden=True),
 
-    # === 截获 Intercept (8 cards) — Contention Phase ===
+    # === 截获 Intercept (9 cards) — Contention Phase ===
     _card('intercept_r1', 'red',   'Intercept', '截获', CONTENTION, LEFT,  '截'),
-    _card('intercept_r2', 'red',   'Intercept', '截获', CONTENTION, RIGHT, '截'),
-    _card('intercept_r3', 'red',   'Intercept', '截获', CONTENTION, ANY,   '截'),
+    _card('intercept_r2', 'red',   'Intercept', '截获', CONTENTION, RIGHT, '截', lock=True),
+    _card('intercept_r3', 'red',   'Intercept', '截获', CONTENTION, STRAIGHT, '截'),
     _card('intercept_b1', 'blue',  'Intercept', '截获', CONTENTION, LEFT,  '截'),
-    _card('intercept_b2', 'blue',  'Intercept', '截获', CONTENTION, RIGHT, '截'),
-    _card('intercept_b3', 'blue',  'Intercept', '截获', CONTENTION, ANY,   '截'),
+    _card('intercept_b2', 'blue',  'Intercept', '截获', CONTENTION, RIGHT, '截', lock=True),
+    _card('intercept_b3', 'blue',  'Intercept', '截获', CONTENTION, STRAIGHT, '截'),
     _card('intercept_k1', 'black', 'Intercept', '截获', CONTENTION, LEFT,  '截'),
-    _card('intercept_k2', 'black', 'Intercept', '截获', CONTENTION, RIGHT, '截'),
+    _card('intercept_k2', 'black', 'Intercept', '截获', CONTENTION, RIGHT, '截', lock=True),
+    _card('intercept_k3', 'black', 'Intercept', '截获', CONTENTION, STRAIGHT, '截'),
 
     # === 调包 Switch (6 cards) — Contention Phase ===
     _card('switch_r1', 'red',   'Switch', '调包', CONTENTION, LEFT,  '换'),
     _card('switch_r2', 'red',   'Switch', '调包', CONTENTION, RIGHT, '换'),
     _card('switch_b1', 'blue',  'Switch', '调包', CONTENTION, LEFT,  '换'),
     _card('switch_b2', 'blue',  'Switch', '调包', CONTENTION, RIGHT, '换'),
-    _card('switch_k1', 'black', 'Switch', '调包', CONTENTION, ANY,   '换'),
-    _card('switch_k2', 'black', 'Switch', '调包', CONTENTION, RIGHT, '换'),
+    _card('switch_k1', 'black', 'Switch', '调包', CONTENTION, STRAIGHT, '换'),
+    _card('switch_k2', 'black', 'Switch', '调包', CONTENTION, RIGHT, '换', lock=True),
 
-    # === 澄清 Clarify (8 cards) — Action Phase (also usable during Dying) ===
-    _card('clarify_r1', 'red',   'Clarify', '澄清', ACTION, LEFT,  '清'),
+    # === 澄清 Clarify (9 cards) — Action Phase (also usable during Dying) ===
+    _card('clarify_r1', 'red',   'Clarify', '澄清', ACTION, LEFT,  '清', lock=True),
     _card('clarify_r2', 'red',   'Clarify', '澄清', ACTION, RIGHT, '清'),
-    _card('clarify_r3', 'red',   'Clarify', '澄清', ACTION, ANY,   '清'),
-    _card('clarify_b1', 'blue',  'Clarify', '澄清', ACTION, LEFT,  '清'),
+    _card('clarify_r3', 'red',   'Clarify', '澄清', ACTION, STRAIGHT, '清'),
+    _card('clarify_b1', 'blue',  'Clarify', '澄清', ACTION, LEFT,  '清', lock=True),
     _card('clarify_b2', 'blue',  'Clarify', '澄清', ACTION, RIGHT, '清'),
-    _card('clarify_b3', 'blue',  'Clarify', '澄清', ACTION, ANY,   '清'),
+    _card('clarify_b3', 'blue',  'Clarify', '澄清', ACTION, STRAIGHT, '清'),
     _card('clarify_k1', 'black', 'Clarify', '澄清', ACTION, LEFT,  '清'),
     _card('clarify_k2', 'black', 'Clarify', '澄清', ACTION, RIGHT, '清'),
+    _card('clarify_k3', 'black', 'Clarify', '澄清', ACTION, STRAIGHT, '清'),
 
     # === 误导 Decoy (6 cards) — Contention Phase ===
     _card('decoy_r1', 'red',   'Decoy', '误导', CONTENTION, LEFT,  '导'),
-    _card('decoy_r2', 'red',   'Decoy', '误导', CONTENTION, ANY,   '导'),
+    _card('decoy_r2', 'red',   'Decoy', '误导', CONTENTION, STRAIGHT, '导'),
     _card('decoy_b1', 'blue',  'Decoy', '误导', CONTENTION, RIGHT, '导'),
-    _card('decoy_b2', 'blue',  'Decoy', '误导', CONTENTION, ANY,   '导'),
+    _card('decoy_b2', 'blue',  'Decoy', '误导', CONTENTION, STRAIGHT, '导'),
     _card('decoy_k1', 'black', 'Decoy', '误导', CONTENTION, LEFT,  '导'),
     _card('decoy_k2', 'black', 'Decoy', '误导', CONTENTION, RIGHT, '导'),
-
-    # === 烧毁 Burn (4 cards) — Contention Phase ===
-    _card('burn_r1', 'red',   'Burn', '烧毁', CONTENTION, RIGHT, '焚'),
-    _card('burn_b1', 'blue',  'Burn', '烧毁', CONTENTION, LEFT,  '焚'),
-    _card('burn_k1', 'black', 'Burn', '烧毁', CONTENTION, ANY,   '焚'),
-    _card('burn_k2', 'black', 'Burn', '烧毁', CONTENTION, RIGHT, '焚'),
-
-    # === 密令 Secret Order (4 cards) — Action Phase, has lock ===
-    _card('secret_r1', 'red',  'Secret Order', '密令', ACTION, ANY,   '令', lock=True),
-    _card('secret_b1', 'blue', 'Secret Order', '密令', ACTION, ANY,   '令', lock=True),
-    _card('secret_k1', 'black','Secret Order', '密令', ACTION, LEFT,  '令', lock=True),
-    _card('secret_k2', 'black','Secret Order', '密令', ACTION, RIGHT, '令', lock=True),
-
-    # === 退回 Return (4 cards) — Contention Phase ===
-    _card('return_r1', 'red',   'Return', '退回', CONTENTION, LEFT,  '回'),
-    _card('return_b1', 'blue',  'Return', '退回', CONTENTION, RIGHT, '回'),
-    _card('return_k1', 'black', 'Return', '退回', CONTENTION, ANY,   '回'),
-    _card('return_k2', 'black', 'Return', '退回', CONTENTION, LEFT,  '回'),
 ]
 
-assert len(CARD_DEFINITIONS) == 54, f"Deck has {len(CARD_DEFINITIONS)} cards, expected 54"
+assert len(CARD_DEFINITIONS) == 42, f"Deck has {len(CARD_DEFINITIONS)} cards, expected 42"
 
 # Verify color distribution
 _color_counts = {}
 for c in CARD_DEFINITIONS:
     _color_counts[c['intel_color']] = _color_counts.get(c['intel_color'], 0) + 1
-assert _color_counts == {'red': 18, 'blue': 18, 'black': 18}, f"Color distribution: {_color_counts}"
+assert _color_counts == {'red': 14, 'blue': 14, 'black': 14}, f"Color distribution: {_color_counts}"
 
 
 # Identity distribution for v1 (no Mystics — Resistance vs Agency only)

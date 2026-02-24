@@ -232,28 +232,44 @@ html, body {
     display: none;   /* JS shows this when there's prompt/button content */
     align-items: center;
     justify-content: center;
-    gap: 8px;
-    padding: 6px 12px;
-    background: rgba(255,255,255,0.45);
+    gap: 10px;
+    padding: 0 14px;
+    height: 38px;
+    background: rgba(255,255,255,0.35);
     backdrop-filter: blur(var(--blur-glass));
     -webkit-backdrop-filter: blur(var(--blur-glass));
-    border-top: 1px solid rgba(255,255,255,0.7);
-    border-bottom: 1px solid rgba(200,225,245,0.5);
-    box-shadow: 0 -2px 8px rgba(0,60,120,0.05), 0 2px 8px rgba(0,60,120,0.05);
-    min-height: 38px;
+    border-top: 1px solid rgba(255,255,255,0.5);
+    border-bottom: 1px solid rgba(200,225,245,0.35);
     z-index: 50;
     position: relative;
 }
 
 #stage-prompt {
-    font-size: 12px;
-    color: var(--color-text);
+    font-size: 11px;
+    color: var(--color-muted);
     flex-shrink: 0;
+    letter-spacing: 0.3px;
+    font-weight: 500;
+    transition: color 0.2s;
+}
+/* Highlight prompt when player needs to act */
+#stage-prompt.prompt-active {
+    color: var(--color-text);
+    font-weight: 600;
 }
 #stage-buttons {
     display: flex;
-    gap: 6px;
+    gap: 5px;
     flex-shrink: 0;
+}
+#stage-buttons:empty {
+    display: none;
+}
+#stage-buttons .btn-sm {
+    padding: 4px 12px;
+    font-size: 11px;
+    border-radius: 5px;
+    box-shadow: none;
 }
 .ribbon-row #my-intel-bar {
     display: flex;

@@ -28,12 +28,20 @@ const state = {
             sender: null,
             direction: null,
             facing: null,
+            target: null,
             isLocked: false,
             lockTarget: null,
             acceptedBy: null,
         },
 
-        contention: { active: false, askingPlayer: null },
+        contention: {
+            active: false,
+            timerSeconds: 0,
+            timerPaused: false,
+            pendingEffect: null,    // 'decoy' | 'switch' | null
+            pendingPlayer: null,
+            revealedIntel: null,    // intel card shown during switch
+        },
         dying: { active: false, player: null, askingPlayer: null },
 
         log: [],
@@ -42,9 +50,9 @@ const state = {
     // UI (local only)
     ui: {
         selectedCardId: null,
-        targetMode: null,       // null | 'probe' | 'coerce' | 'clarify' | 'lock' | 'gift'
+        targetMode: null,       // null | 'probe' | 'coerce' | 'coerce_type' | 'coerce_give' | 'clarify' | 'clarify_pick' | 'transmit_target' | 'gift'
         pendingAction: null,    // card awaiting target selection
-        pendingDirection: null, // direction for 'any' cards during transmission
+        pendingExtra: null,     // {targetId, cardType, intelCards, matchingIds} for multi-step flows
         giftCards: [],          // selected card IDs for death gift
         giftRecipient: null,
     },

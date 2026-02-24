@@ -19,6 +19,9 @@ log = logging.getLogger('fengsheng')
 rooms = {}
 
 
+CONTENTION_TIMER_SECONDS = 7
+
+
 class RoomState:
     def __init__(self, room_id):
         self.room_id = room_id
@@ -26,6 +29,53 @@ class RoomState:
         self.host = None     # user_id of first player (host)
         self.game = None     # GameState | None
         self.order = []      # Join order (for seating)
+        self.contention_timer_task = None  # asyncio.Task | None
+
+
+# ── Contention Timer ──────────────────────────────────────
+
+async def start_contention_timer(room):
+    if room.contention_timer_task and not room.contention_timer_task.done():
+        room.contention_timer_task.cancel()
+    room.contention_timer_task = asyncio.create_task(_contention_timer_callback(room))
+
+
+async def stop_contention_timer(room):
+    if room.contention_timer_task and not room.contention_timer_task.done():
+        room.contention_timer_task.cancel()
+    room.contention_timer_task = None
+
+
+async def _contention_timer_callback(room):
+    try:
+        await asyncio.sleep(CONTENTION_TIMER_SECONDS)
+    except asyncio.CancelledError:
+        return
+    try:
+        if not room.game or room.game.phase != Phase.CONTENTION:
+            return
+        if room.game.contention_pending:
+            return  # pending choice — don't end
+        events = room.game.end_contention()
+        await route_events(room, events)
+        await _process_timer_signal(room)
+    except Exception:
+        log.exception('Error in contention timer callback')
+
+
+async def _process_timer_signal(room):
+    if not room.game:
+        return
+    signal = room.game.timer_signal
+    room.game.timer_signal = None
+    if signal == 'start_timer' or signal == 'reset_timer':
+        await start_contention_timer(room)
+        await broadcast(room, {
+            'type': 'contention_timer_sync',
+            'seconds': CONTENTION_TIMER_SECONDS,
+        })
+    elif signal == 'pause_timer':
+        await stop_contention_timer(room)
 
 
 # ── HTTP Routes ────────────────────────────────────────────
@@ -73,7 +123,9 @@ async def websocket_handler(request):
                 elif msg_type == 'action_play_card':
                     await handle_game_action(user_id, room_id, 'play_action_card',
                                              card_id=data.get('card_id'),
-                                             target_id=data.get('target_id'))
+                                             target_id=data.get('target_id'),
+                                             card_type=data.get('card_type'),
+                                             intel_card_id=data.get('intel_card_id'))
 
                 elif msg_type == 'action_done':
                     await handle_game_action(user_id, room_id, 'end_action_phase')
@@ -81,8 +133,8 @@ async def websocket_handler(request):
                 elif msg_type == 'transmit_card':
                     await handle_game_action(user_id, room_id, 'transmit_intel',
                                              card_id=data.get('card_id'),
-                                             direction=data.get('direction'),
-                                             lock_target=data.get('lock_target'))
+                                             target=data.get('target'),
+                                             lock=data.get('lock'))
 
                 elif msg_type == 'accept_intel':
                     await handle_game_action(user_id, room_id, 'accept_intel')
@@ -92,15 +144,24 @@ async def websocket_handler(request):
 
                 elif msg_type == 'contention_play':
                     await handle_game_action(user_id, room_id, 'play_contention_card',
-                                             card_id=data.get('card_id'),
-                                             extra=data.get('swap_card_id'))
+                                             card_id=data.get('card_id'))
 
-                elif msg_type == 'contention_pass':
-                    await handle_game_action(user_id, room_id, 'pass_contention')
+                elif msg_type == 'decoy_direction':
+                    await handle_game_action(user_id, room_id, 'resolve_decoy_direction',
+                                             direction=data.get('direction'))
+
+                elif msg_type == 'switch_card':
+                    await handle_game_action(user_id, room_id, 'resolve_switch_card',
+                                             swap_card_id=data.get('card_id'))
+
+                elif msg_type == 'coerce_response':
+                    await handle_game_action(user_id, room_id, 'resolve_coerce_response',
+                                             card_id=data.get('card_id'))
 
                 elif msg_type == 'clarify_play':
                     await handle_game_action(user_id, room_id, 'play_clarify_rescue',
-                                             card_id=data.get('card_id'))
+                                             card_id=data.get('card_id'),
+                                             intel_card_id=data.get('intel_card_id'))
 
                 elif msg_type == 'clarify_pass':
                     await handle_game_action(user_id, room_id, 'pass_rescue')
@@ -142,6 +203,14 @@ async def handle_enter_room(ws, user_id, room_id, name):
         state = room.game.get_state_for_player(user_id)
         if state:
             await ws.send_json(state)
+            # Timer sync for contention phase
+            if (room.game.phase == Phase.CONTENTION
+                    and room.contention_timer_task
+                    and not room.contention_timer_task.done()):
+                await ws.send_json({
+                    'type': 'contention_timer_sync',
+                    'seconds': CONTENTION_TIMER_SECONDS,
+                })
             return
 
     # Send room state to all
@@ -196,6 +265,7 @@ async def handle_start_game(user_id, room_id):
     try:
         events = room.game.setup()
         await route_events(room, events)
+        await _process_timer_signal(room)
     except Exception as e:
         log.exception('Error during game setup')
         room.game = None
@@ -215,6 +285,7 @@ async def handle_game_action(user_id, room_id, method_name, **kwargs):
     try:
         events = method(user_id, **kwargs)
         await route_events(room, events)
+        await _process_timer_signal(room)
     except Exception as e:
         log.exception('Error in game action %s', method_name)
         p = room.players.get(user_id)

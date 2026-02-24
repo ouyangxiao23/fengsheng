@@ -252,3 +252,9 @@
 .my-intel-pip-red   { background: var(--color-red); }
 .my-intel-pip-blue  { background: var(--color-blue); }
 .my-intel-pip-black { background: var(--color-black-intel); }
+
+/* Played card floating near avatar */
+.played-card-float .card,
+.played-card-float .card-back {
+    cursor: default;
+}

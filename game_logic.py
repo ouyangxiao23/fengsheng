@@ -67,24 +67,25 @@ class GameState:
 
         # Transmission state
         self.intel_card = None
-        self.intel_direction = None  # 'left' | 'right'
+        self.intel_direction = None  # 'left' | 'right' | 'straight'
         self.intel_sender = None
         self.intel_facing = None     # player the intel is currently in front of
-        self.intel_locked = None     # player who must accept (or None)
+        self.intel_target = None     # designated recipient
+        self.intel_locked = None     # target player if card has_lock (or None)
         self.intel_accepted_by = None
 
-        # Contention state
-        self.contention_order = []
-        self.contention_idx = 0
-        self.contention_all_passed = False
+        # Contention state (simultaneous timer-based)
+        self.contention_pending = None           # None | 'decoy_direction' | 'switch_card'
+        self.contention_pending_player = None    # player_id who must make a choice
+        self.timer_signal = None                 # read by server.py after each action
 
         # Dying state
         self.dying_player = None
         self.rescue_order = []
         self.rescue_idx = 0
 
-        # Burn state (peek at intel during burn resolution)
-        self.pending_burn_player = None
+        # Coerce state (2-step resolution)
+        self.pending_coerce = None  # {coercer, target, card_type, matching_ids}
 
     # ── Setup ──────────────────────────────────────────────────
 
@@ -166,13 +167,15 @@ class GameState:
 
     # ── Action Phase ───────────────────────────────────────────
 
-    def play_action_card(self, player_id, card_id, target_id=None):
+    def play_action_card(self, player_id, card_id, target_id=None, card_type=None, intel_card_id=None):
         """Play a card for its action effect during action phase."""
         events = []
         if self.phase != Phase.ACTION:
             return [self._error(player_id, '当前不是出牌阶段')]
         if player_id != self.current_player_id():
             return [self._error(player_id, '不是你的回合')]
+        if self.pending_coerce:
+            return [self._error(player_id, '正在等待威逼回应')]
 
         ps = self.players[player_id]
         card = ps.hand_card(card_id)
@@ -180,6 +183,23 @@ class GameState:
             return [self._error(player_id, '你没有这张牌')]
         if card['action_phase'] != 'action':
             return [self._error(player_id, '这张牌不能在出牌阶段使用')]
+
+        # Validate required parameters before removing card
+        effect = card['action_effect']
+        if effect == 'coerce':
+            if not target_id or target_id not in self.players:
+                return [self._error(player_id, '请选择一个目标')]
+            if card_type not in ('intercept', 'switch', 'clarify', 'decoy'):
+                return [self._error(player_id, '请选择要威逼的牌类型')]
+        elif effect == 'clarify':
+            if not target_id or target_id not in self.players:
+                return [self._error(player_id, '请选择一个目标')]
+            target_ps = self.players[target_id]
+            if not target_ps.intel_area:
+                return [self._error(player_id, '目标没有情报')]
+        elif effect == 'probe':
+            if not target_id or target_id not in self.players:
+                return [self._error(player_id, '请选择一个目标')]
 
         # Remove card from hand
         ps.remove_hand_card(card_id)
@@ -206,11 +226,9 @@ class GameState:
         if effect == 'probe':
             events.extend(self._resolve_probe(player_id, target_id))
         elif effect == 'coerce':
-            events.extend(self._resolve_coerce(player_id, target_id))
+            events.extend(self._resolve_coerce(player_id, target_id, card_type))
         elif effect == 'clarify':
-            events.extend(self._resolve_clarify_action(player_id, target_id))
-        elif effect == 'secret_order':
-            events.extend(self._resolve_secret_order(player_id))
+            events.extend(self._resolve_clarify_action(player_id, target_id, intel_card_id))
 
         self.discard.append(card)
         events.extend(self._hand_count_events())
@@ -222,6 +240,8 @@ class GameState:
             return [self._error(player_id, '当前不是出牌阶段')]
         if player_id != self.current_player_id():
             return [self._error(player_id, '不是你的回合')]
+        if self.pending_coerce:
+            return [self._error(player_id, '正在等待威逼回应')]
 
         # Check if player has cards to transmit
         ps = self.players[player_id]
@@ -234,8 +254,8 @@ class GameState:
 
     # ── Transmission Phase ─────────────────────────────────────
 
-    def transmit_intel(self, player_id, card_id, direction=None, lock_target=None):
-        """Player sends a card as intel."""
+    def transmit_intel(self, player_id, card_id, target=None, lock=None):
+        """Player sends a card as intel to a designated target."""
         if self.phase != Phase.TRANSMISSION:
             return [self._error(player_id, '当前不是传递阶段')]
         if player_id != self.current_player_id():
@@ -246,57 +266,67 @@ class GameState:
         if not card:
             return [self._error(player_id, '你没有这张牌')]
 
-        # Determine direction
-        card_dir = card['direction']
-        if card_dir == 'any':
-            if direction not in ('left', 'right'):
-                return [self._error(player_id, '请选择传递方向')]
-            actual_dir = direction
-        else:
-            actual_dir = card_dir
+        # Target validation
+        if not target or target not in self.players:
+            return [self._error(player_id, '请选择情报传递目标')]
+        if target == player_id:
+            return [self._error(player_id, '不能选择自己作为目标')]
+        if not self.players[target].alive:
+            return [self._error(player_id, '目标玩家已死亡')]
 
-        # Lock target validation
-        if lock_target:
-            if not card['has_lock']:
-                return [self._error(player_id, '此牌没有锁定属性')]
-            if lock_target not in self.turn_order or lock_target == player_id:
-                return [self._error(player_id, '无效的锁定目标')]
-            if not self.players[lock_target].alive:
-                return [self._error(player_id, '目标玩家已死亡')]
+        # Direction comes from the card itself
+        card_dir = card['direction']
+        # Lock: player chooses whether to lock (only possible if card has_lock)
+        is_locked = bool(lock) and card['has_lock']
 
         # Remove card from hand, set as intel
         ps.remove_hand_card(card_id)
         self.intel_card = card
-        self.intel_direction = actual_dir
+        self.intel_direction = card_dir
         self.intel_sender = player_id
-        self.intel_locked = lock_target
-
-        # Find first player in direction
-        next_player = self._next_alive_player(player_id, actual_dir)
-        self.intel_facing = next_player
+        self.intel_target = target
+        self.intel_locked = target if is_locked else None
         self.intel_accepted_by = None
 
         events = []
         events.extend(self._hand_count_events())
 
-        # Broadcast transmission (card is face-down — no details)
-        events.append({
-            'target': 'all',
-            'msg': {
-                'type': 'intel_transmitted',
-                'sender_id': player_id,
-                'direction': actual_dir,
-                'is_locked': lock_target is not None,
-                'lock_target': lock_target,
-                'facing': next_player,
-            }
-        })
-
-        # If locked target, and this is the locked player, they must accept
-        if lock_target and next_player == lock_target:
-            return events + self._force_accept(next_player)
-
-        return events
+        if card_dir == 'straight':
+            # Straight: card goes directly to target
+            self.intel_facing = target
+            events.append({
+                'target': 'all',
+                'msg': {
+                    'type': 'intel_transmitted',
+                    'sender_id': player_id,
+                    'direction': card_dir,
+                    'target': target,
+                    'is_locked': is_locked,
+                    'facing': target,
+                }
+            })
+            if is_locked:
+                return events + self._force_accept(target)
+            return events
+        else:
+            # Left/right: card moves one player at a time
+            next_player = self._next_alive_player(player_id, card_dir)
+            self.intel_facing = next_player
+            events.append({
+                'target': 'all',
+                'msg': {
+                    'type': 'intel_transmitted',
+                    'sender_id': player_id,
+                    'direction': card_dir,
+                    'target': target,
+                    'is_locked': is_locked,
+                    'facing': next_player,
+                }
+            })
+            # If first player IS the target
+            if next_player == target and is_locked:
+                return events + self._force_accept(next_player)
+            return events
 
     def accept_intel(self, player_id):
         """Player accepts the intel facing them."""
@@ -316,7 +346,7 @@ class GameState:
         return events
 
     def pass_intel(self, player_id):
-        """Player passes intel to next player in direction."""
+        """Player passes/refuses intel."""
         if self.phase != Phase.TRANSMISSION:
             return [self._error(player_id, '当前不是传递阶段')]
         if player_id != self.intel_facing:
@@ -324,27 +354,30 @@ class GameState:
         if self.intel_locked and player_id == self.intel_locked:
             return [self._error(player_id, '你被锁定，必须接收')]
 
-        # Move intel to next player
-        next_player = self._next_alive_player(player_id, self.intel_direction)
-
-        # If intel comes back to sender, sender must accept
-        if next_player == self.intel_sender:
-            self.intel_facing = next_player
+        # Target refusing (unlocked card at target)
+        if player_id == self.intel_target:
+            # Card returns to sender, sender must accept
+            self.intel_facing = self.intel_sender
             events = [{
                 'target': 'all',
-                'msg': {'type': 'intel_moved', 'from_player': player_id, 'to_player': next_player}
+                'msg': {'type': 'intel_moved', 'from_player': player_id, 'to_player': self.intel_sender}
             }]
-            return events + self._force_accept(next_player)
+            return events + self._force_accept(self.intel_sender)
 
+        # Intermediate player passing (left/right only — straight goes directly)
+        next_player = self._next_alive_player(player_id, self.intel_direction)
         self.intel_facing = next_player
         events = [{
             'target': 'all',
             'msg': {'type': 'intel_moved', 'from_player': player_id, 'to_player': next_player}
         }]
 
-        # If locked and next player is the target, force accept
-        if self.intel_locked and next_player == self.intel_locked:
-            return events + self._force_accept(next_player)
+        # If next player IS the target
+        if next_player == self.intel_target:
+            if self.intel_locked:
+                return events + self._force_accept(next_player)
+            # Not locked — target gets to choose
+            return events
 
         return events
 
@@ -361,44 +394,30 @@ class GameState:
     # ── Contention Phase ───────────────────────────────────────
 
     def _start_contention(self):
-        """Begin contention round. Ask players in order starting from accepter."""
+        """Begin simultaneous contention phase with timer."""
         self.phase = Phase.CONTENTION
-        # Build contention order: all alive players starting from accepter, going CCW
-        order = []
-        start = self.turn_order.index(self.intel_accepted_by)
-        n = len(self.turn_order)
-        for i in range(n):
-            pid = self.turn_order[(start + i) % n]
-            if self.players[pid].alive:
-                order.append(pid)
-        self.contention_order = order
-        self.contention_idx = 0
-        self.contention_all_passed = False
-
+        self.contention_pending = None
+        self.contention_pending_player = None
+        self.timer_signal = 'start_timer'
         events = [self._phase_change_event()]
-        events.extend(self._ask_contention())
+        events.append({
+            'target': 'all',
+            'msg': {
+                'type': 'contention_start',
+                'receiver': self.intel_accepted_by,
+                'timer_seconds': 7,
+            }
+        })
         return events
 
-    def _ask_contention(self):
-        """Ask the current contention player if they want to play."""
-        if self.contention_idx >= len(self.contention_order):
-            # All players had a chance — resolve reception
-            return self._resolve_reception()
-
-        pid = self.contention_order[self.contention_idx]
-        return [{
-            'target': 'all',
-            'msg': {'type': 'contention_ask', 'player_id': pid}
-        }]
-
-    def play_contention_card(self, player_id, card_id, extra=None):
-        """Player plays a contention-phase card."""
+    def play_contention_card(self, player_id, card_id):
+        """Player plays a contention-phase card (simultaneous — any alive player)."""
         if self.phase != Phase.CONTENTION:
             return [self._error(player_id, '当前不是争夺阶段')]
-        if self.contention_idx >= len(self.contention_order):
-            return [self._error(player_id, '争夺已结束')]
-        if player_id != self.contention_order[self.contention_idx]:
-            return [self._error(player_id, '还没轮到你')]
+        if self.contention_pending:
+            return [self._error(player_id, '正在等待选择，无法出牌')]
+        if not self.players[player_id].alive:
+            return [self._error(player_id, '你已死亡')]
 
         ps = self.players[player_id]
         card = ps.hand_card(card_id)
@@ -414,42 +433,47 @@ class GameState:
             'msg': {'type': 'card_played', 'player_id': player_id, 'card': card}
         }]
 
-        # Resolve effect
         effect = card['action_effect']
         if effect == 'intercept':
             events.extend(self._resolve_intercept(player_id))
-        elif effect == 'switch':
-            events.extend(self._resolve_switch(player_id, extra))
+            self.timer_signal = 'reset_timer'
         elif effect == 'decoy':
-            events.extend(self._resolve_decoy(player_id))
-        elif effect == 'burn':
-            events.extend(self._resolve_burn(player_id))
-        elif effect == 'return':
-            events.extend(self._resolve_return(player_id))
+            self.contention_pending = 'decoy_direction'
+            self.contention_pending_player = player_id
+            self.timer_signal = 'pause_timer'
+            events.append({
+                'target': 'all',
+                'msg': {
+                    'type': 'contention_pending',
+                    'effect': 'decoy',
+                    'player_id': player_id,
+                }
+            })
+            events.append({
+                'target': player_id,
+                'msg': {'type': 'decoy_choose_direction'}
+            })
+        elif effect == 'switch':
+            self.contention_pending = 'switch_card'
+            self.contention_pending_player = player_id
+            self.timer_signal = 'pause_timer'
+            events.append({
+                'target': 'all',
+                'msg': {
+                    'type': 'contention_pending',
+                    'effect': 'switch',
+                    'player_id': player_id,
+                    'intel_revealed': self.intel_card,
+                }
+            })
+            events.append({
+                'target': player_id,
+                'msg': {'type': 'switch_choose_card'}
+            })
 
         self.discard.append(card)
         events.extend(self._hand_count_events())
-
-        # After a contention card, restart contention from the affected player
-        # (all players get another chance)
-        self.contention_idx = 0
-        events.extend(self._ask_contention())
         return events
-
-    def pass_contention(self, player_id):
-        """Player passes in contention."""
-        if self.phase != Phase.CONTENTION:
-            return [self._error(player_id, '当前不是争夺阶段')]
-        if self.contention_idx >= len(self.contention_order):
-            return [self._error(player_id, '争夺已结束')]
-        if player_id != self.contention_order[self.contention_idx]:
-            return [self._error(player_id, '还没轮到你')]
-
-        self.contention_idx += 1
-        if self.contention_idx >= len(self.contention_order):
-            return self._resolve_reception()
-
-        return self._ask_contention()
 
     # ── Contention Effects ─────────────────────────────────────
 
@@ -457,15 +481,7 @@ class GameState:
         """Player becomes the new receiver."""
         old_receiver = self.intel_accepted_by
         self.intel_accepted_by = player_id
-        # Rebuild contention order starting from new receiver
-        order = []
-        start = self.turn_order.index(player_id)
-        n = len(self.turn_order)
-        for i in range(n):
-            pid = self.turn_order[(start + i) % n]
-            if self.players[pid].alive:
-                order.append(pid)
-        self.contention_order = order
+        self.intel_facing = player_id
         return [{
             'target': 'all',
             'msg': {
@@ -476,10 +492,45 @@ class GameState:
             }
         }]
 
-    def _resolve_switch(self, player_id, swap_card_id):
-        """Swap intel card with a hand card."""
+    def resolve_decoy_direction(self, player_id, direction=None):
+        """Resolve pending decoy: move intel one seat left or right."""
+        if self.contention_pending != 'decoy_direction':
+            return [self._error(player_id, '当前没有待处理的误导')]
+        if player_id != self.contention_pending_player:
+            return [self._error(player_id, '不是你的选择')]
+        if direction not in ('left', 'right'):
+            return [self._error(player_id, '请选择左或右')]
+
+        old_receiver = self.intel_accepted_by
+        new_receiver = self._next_alive_player(self.intel_accepted_by, direction)
+        self.intel_accepted_by = new_receiver
+        self.intel_facing = new_receiver
+
+        self.contention_pending = None
+        self.contention_pending_player = None
+        self.timer_signal = 'reset_timer'
+
+        return [{
+            'target': 'all',
+            'msg': {
+                'type': 'contention_result',
+                'effect': 'decoy',
+                'player_id': player_id,
+                'direction': direction,
+                'old_receiver': old_receiver,
+                'new_receiver': new_receiver,
+            }
+        }]
+
+    def resolve_switch_card(self, player_id, swap_card_id=None):
+        """Resolve pending switch: swap intel card with a hand card."""
+        if self.contention_pending != 'switch_card':
+            return [self._error(player_id, '当前没有待处理的调包')]
+        if player_id != self.contention_pending_player:
+            return [self._error(player_id, '不是你的选择')]
         if not swap_card_id:
             return [self._error(player_id, '请选择要替换的手牌')]
+
         ps = self.players[player_id]
         swap_card = ps.hand_card(swap_card_id)
         if not swap_card:
@@ -490,8 +541,11 @@ class GameState:
         self.intel_card = swap_card
         ps.hand.append(old_intel)
 
-        # Only the switcher knows what happened; others just know a switch occurred
-        return [
+        self.contention_pending = None
+        self.contention_pending_player = None
+        self.timer_signal = 'reset_timer'
+
+        events = [
             {
                 'target': player_id,
                 'msg': {
@@ -510,94 +564,22 @@ class GameState:
                 }
             }
         ]
+        events.extend(self._hand_count_events())
+        return events
 
-    def _resolve_decoy(self, player_id):
-        """Reverse intel direction."""
-        old_dir = self.intel_direction
-        self.intel_direction = 'left' if old_dir == 'right' else 'right'
-        return [{
-            'target': 'all',
-            'msg': {
-                'type': 'contention_result',
-                'effect': 'decoy',
-                'player_id': player_id,
-                'new_direction': self.intel_direction,
-            }
-        }]
-
-    def _resolve_burn(self, player_id):
-        """Peek at intel; if color matches any in receiver's area, discard it."""
-        receiver = self.intel_accepted_by
-        receiver_ps = self.players[receiver]
-        intel_color = self.intel_card['intel_color']
-        receiver_colors = [c['intel_color'] for c in receiver_ps.intel_area]
-
-        # Burner sees the card
-        events = [{
-            'target': player_id,
-            'msg': {
-                'type': 'burn_peek',
-                'card': self.intel_card,
-            }
-        }]
-
-        if intel_color in receiver_colors:
-            # Discard the intel — skip reception
-            self.discard.append(self.intel_card)
-            self.intel_card = None
-            events.append({
-                'target': 'all',
-                'msg': {
-                    'type': 'contention_result',
-                    'effect': 'burn_success',
-                    'player_id': player_id,
-                    'intel_color': intel_color,
-                }
-            })
-            # End this turn — no reception needed
-            events.extend(self._end_turn())
-            return events
-        else:
-            events.append({
-                'target': 'all',
-                'msg': {
-                    'type': 'contention_result',
-                    'effect': 'burn_fail',
-                    'player_id': player_id,
-                }
-            })
-            return events
-
-    def _resolve_return(self, player_id):
-        """Send intel back to sender. Sender must accept."""
-        self.intel_accepted_by = self.intel_sender
-        # Rebuild contention order from sender
-        order = []
-        start = self.turn_order.index(self.intel_sender)
-        n = len(self.turn_order)
-        for i in range(n):
-            pid = self.turn_order[(start + i) % n]
-            if self.players[pid].alive:
-                order.append(pid)
-        self.contention_order = order
-        return [{
-            'target': 'all',
-            'msg': {
-                'type': 'contention_result',
-                'effect': 'return',
-                'player_id': player_id,
-                'receiver': self.intel_sender,
-            }
-        }]
+    def end_contention(self):
+        """Called by server when timer expires with no pending choice."""
+        if self.phase != Phase.CONTENTION:
+            return []
+        if self.contention_pending:
+            return []  # should not be called while pending
+        self.timer_signal = None
+        return self._resolve_reception()
 
     # ── Reception ──────────────────────────────────────────────
 
     def _resolve_reception(self):
         """Flip intel, add to receiver's area, check win/death."""
-        if self.intel_card is None:
-            # Burn already removed it
-            return self._end_turn()
-
         self.phase = Phase.RECEPTION
         receiver = self.intel_accepted_by
         receiver_ps = self.players[receiver]
@@ -697,7 +679,7 @@ class GameState:
             'msg': {'type': 'rescue_ask', 'player_id': pid}
         }]
 
-    def play_clarify_rescue(self, player_id, card_id, target_card_color=None):
+    def play_clarify_rescue(self, player_id, card_id, intel_card_id=None):
         """Play Clarify to save dying player."""
         if self.phase != Phase.DYING:
             return [self._error(player_id, '当前不是濒死阶段')]
@@ -717,8 +699,16 @@ class GameState:
         if not black_cards:
             return [self._error(player_id, '没有黑色情报可移除')]
 
-        # Remove the first black card
-        removed = black_cards[0]
+        if intel_card_id:
+            removed = None
+            for c in black_cards:
+                if c['id'] == intel_card_id:
+                    removed = c
+                    break
+            if not removed:
+                return [self._error(player_id, '指定的情报不存在')]
+        else:
+            removed = black_cards[0]
         dying_ps.intel_area.remove(removed)
         self.discard.append(removed)
 
@@ -899,59 +889,182 @@ class GameState:
             }
         }]
 
-    def _resolve_coerce(self, player_id, target_id):
-        """Target reveals hand or gives a card. For simplicity: target gives 1 card."""
+    def _resolve_coerce(self, player_id, target_id, card_type):
+        """Coercer picks target + card type. Target gives matching card or reveals hand."""
         if not target_id or target_id not in self.players:
             return [self._error(player_id, '请选择一个目标')]
+        if card_type not in ('intercept', 'switch', 'clarify', 'decoy'):
+            return [self._error(player_id, '请选择要威逼的牌类型')]
         target = self.players[target_id]
-        if len(target.hand) == 0:
-            return [{'target': 'all', 'msg': {
-                'type': 'action_effect', 'effect': 'coerce',
-                'target_id': target_id, 'result': 'no_cards'
-            }}]
 
-        # Target gives a random card to the coercer
-        card = target.hand.pop(random.randint(0, len(target.hand) - 1))
-        self.players[player_id].hand.append(card)
+        matching = [c for c in target.hand if c['action_effect'] == card_type]
 
+        if len(matching) == 0:
+            # No match — reveal full hand to coercer
+            events = [{
+                'target': player_id,
+                'msg': {
+                    'type': 'action_effect',
+                    'effect': 'coerce_reveal',
+                    'target_id': target_id,
+                    'hand': [c.copy() for c in target.hand],
+                }
+            }, {
+                'target': target_id,
+                'msg': {
+                    'type': 'action_effect',
+                    'effect': 'coerce_revealed',
+                    'coercer_id': player_id,
+                    'card_type': card_type,
+                }
+            }, {
+                'target': f'all_except:{player_id},{target_id}',
+                'msg': {
+                    'type': 'action_effect',
+                    'effect': 'coerce_no_match',
+                    'coercer_id': player_id,
+                    'target_id': target_id,
+                    'card_type': card_type,
+                }
+            }]
+            return events
+
+        if len(matching) == 1:
+            # Auto-transfer the single matching card
+            card = matching[0]
+            target.remove_hand_card(card['id'])
+            self.players[player_id].hand.append(card)
+            events = [{
+                'target': player_id,
+                'msg': {
+                    'type': 'action_effect',
+                    'effect': 'coerce_gave',
+                    'target_id': target_id,
+                    'card': card,
+                    'card_type': card_type,
+                }
+            }, {
+                'target': target_id,
+                'msg': {
+                    'type': 'action_effect',
+                    'effect': 'coerce_lost',
+                    'coercer_id': player_id,
+                    'card': card,
+                    'card_type': card_type,
+                }
+            }, {
+                'target': f'all_except:{player_id},{target_id}',
+                'msg': {
+                    'type': 'action_effect',
+                    'effect': 'coerce_gave',
+                    'coercer_id': player_id,
+                    'target_id': target_id,
+                    'card_type': card_type,
+                }
+            }]
+            return events
+
+        # 2+ matches — target must choose
+        self.pending_coerce = {
+            'coercer': player_id,
+            'target': target_id,
+            'card_type': card_type,
+            'matching_ids': [c['id'] for c in matching],
+        }
         events = [{
-            'target': player_id,
-            'msg': {
-                'type': 'action_effect',
-                'effect': 'coerce',
-                'target_id': target_id,
-                'result': 'gave_card',
-                'card': card,
-            }
-        }, {
             'target': target_id,
             'msg': {
-                'type': 'action_effect',
-                'effect': 'coerce_lost',
+                'type': 'coerce_choose',
                 'coercer_id': player_id,
-                'card': card,
+                'card_type': card_type,
+                'matching_ids': [c['id'] for c in matching],
+            }
+        }, {
+            'target': player_id,
+            'msg': {
+                'type': 'coerce_waiting',
+                'target_id': target_id,
+                'card_type': card_type,
             }
         }, {
             'target': f'all_except:{player_id},{target_id}',
             'msg': {
-                'type': 'action_effect',
-                'effect': 'coerce',
-                'target_id': target_id,
+                'type': 'coerce_pending',
                 'coercer_id': player_id,
-                'result': 'gave_card',
+                'target_id': target_id,
+                'card_type': card_type,
             }
         }]
         return events
 
-    def _resolve_clarify_action(self, player_id, target_id):
-        """Remove 1 black intel from target during action phase."""
+    def resolve_coerce_response(self, player_id, card_id):
+        """Target responds to coerce by giving a specific card."""
+        if not self.pending_coerce:
+            return [self._error(player_id, '没有待处理的威逼')]
+        if player_id != self.pending_coerce['target']:
+            return [self._error(player_id, '你不是威逼的目标')]
+        if card_id not in self.pending_coerce['matching_ids']:
+            return [self._error(player_id, '只能选择符合要求的牌')]
+
+        coercer_id = self.pending_coerce['coercer']
+        card_type = self.pending_coerce['card_type']
+        self.pending_coerce = None
+
+        target = self.players[player_id]
+        card = target.remove_hand_card(card_id)
+        if not card:
+            return [self._error(player_id, '你没有这张牌')]
+        self.players[coercer_id].hand.append(card)
+
+        events = [{
+            'target': coercer_id,
+            'msg': {
+                'type': 'action_effect',
+                'effect': 'coerce_gave',
+                'target_id': player_id,
+                'card': card,
+                'card_type': card_type,
+            }
+        }, {
+            'target': player_id,
+            'msg': {
+                'type': 'action_effect',
+                'effect': 'coerce_lost',
+                'coercer_id': coercer_id,
+                'card': card,
+                'card_type': card_type,
+            }
+        }, {
+            'target': f'all_except:{coercer_id},{player_id}',
+            'msg': {
+                'type': 'action_effect',
+                'effect': 'coerce_gave',
+                'coercer_id': coercer_id,
+                'target_id': player_id,
+                'card_type': card_type,
+            }
+        }]
+        events.extend(self._hand_count_events())
+        return events
+
+    def _resolve_clarify_action(self, player_id, target_id, intel_card_id=None):
+        """Remove 1 intel of any color from target during action phase."""
         if not target_id or target_id not in self.players:
             return [self._error(player_id, '请选择一个目标')]
         target = self.players[target_id]
-        black_cards = [c for c in target.intel_area if c['intel_color'] == 'black']
-        if not black_cards:
-            return [self._error(player_id, '目标没有黑色情报')]
-        removed = black_cards[0]
+        if not target.intel_area:
+            return [self._error(player_id, '目标没有情报')]
+        if intel_card_id:
+            removed = None
+            for c in target.intel_area:
+                if c['id'] == intel_card_id:
+                    removed = c
+                    break
+            if not removed:
+                return [self._error(player_id, '指定的情报不存在')]
+        else:
+            # Fallback: remove first card
+            removed = target.intel_area[0]
         target.intel_area.remove(removed)
         self.discard.append(removed)
         return [{
@@ -964,27 +1077,6 @@ class GameState:
                 'removed_intel': removed,
             }
         }]
-
-    def _resolve_secret_order(self, player_id):
-        """Draw 1 extra card."""
-        cards = self._draw_cards(1)
-        self.players[player_id].hand.extend(cards)
-        events = [{
-            'target': player_id,
-            'msg': {
-                'type': 'action_effect',
-                'effect': 'secret_order',
-                'cards': cards,
-            }
-        }, {
-            'target': f'all_except:{player_id}',
-            'msg': {
-                'type': 'action_effect',
-                'effect': 'secret_order',
-                'player_id': player_id,
-            }
-        }]
-        return events
 
     # ── Elimination (no cards to transmit) ─────────────────────
 
@@ -1022,10 +1114,12 @@ class GameState:
         self.intel_direction = None
         self.intel_sender = None
         self.intel_facing = None
+        self.intel_target = None
         self.intel_locked = None
         self.intel_accepted_by = None
-        self.contention_order = []
-        self.contention_idx = 0
+        self.contention_pending = None
+        self.contention_pending_player = None
+        self.timer_signal = None
 
     def _next_alive_player(self, from_id, direction):
         """Get next alive player in direction from given player (by seating)."""
@@ -1116,6 +1210,7 @@ class GameState:
                 'sender': self.intel_sender,
                 'direction': self.intel_direction,
                 'facing': self.intel_facing,
+                'target': self.intel_target,
                 'is_locked': self.intel_locked is not None,
                 'lock_target': self.intel_locked,
                 'accepted_by': self.intel_accepted_by,
@@ -1123,10 +1218,21 @@ class GameState:
             'dying_player': self.dying_player,
         }
 
-        if self.phase == Phase.CONTENTION and self.contention_idx < len(self.contention_order):
-            state['contention_asking'] = self.contention_order[self.contention_idx]
+        if self.phase == Phase.CONTENTION:
+            state['contention_pending'] = self.contention_pending
+            state['contention_pending_player'] = self.contention_pending_player
 
         if self.phase == Phase.DYING and self.rescue_idx < len(self.rescue_order):
             state['rescue_asking'] = self.rescue_order[self.rescue_idx]
+
+        if self.pending_coerce:
+            pc = {
+                'coercer': self.pending_coerce['coercer'],
+                'target': self.pending_coerce['target'],
+                'card_type': self.pending_coerce['card_type'],
+            }
+            if player_id == self.pending_coerce['target']:
+                pc['matching_ids'] = self.pending_coerce['matching_ids']
+            state['pending_coerce'] = pc
 
         return state

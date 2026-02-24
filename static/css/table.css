@@ -2,8 +2,9 @@
 
 #table-area {
     position: relative;
-    flex: 0 0 44%;
+    flex: 1;          /* takes ALL remaining space after fixed bars + cockpit */
     overflow: visible;
+    min-height: 0;
 }
 
 .avatar-wrap {
@@ -72,10 +73,6 @@
 .avatar-dead {
     opacity: 0.3;
     filter: grayscale(1);
-}
-
-.avatar-me {
-    border-color: var(--color-accent-dim);
 }
 
 .avatar-name {

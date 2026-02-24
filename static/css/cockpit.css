@@ -1,12 +1,17 @@
 /* Cockpit — my hand, Frutiger Aero */
 
 #cockpit-area {
-    flex: 1;
+    flex: 0 0 auto;
+    height: 130px;      /* just enough for the card fan — no wasted space */
     display: flex;
     flex-direction: column;
-    overflow: hidden;
-    padding: 0 8px 16px;
+    overflow: visible;  /* fan cards can poke above the box */
+    padding: 0 8px 0;
     min-height: 0;
+    margin-top: 0px;  /* pull up into table area so cards sit closer to ellipse */
+    margin-bottom: 80px; /* gap between card fan and action bar */
+    position: relative;
+    z-index: 10;
 }
 
 /* My intel bar (lives in ribbon now) */

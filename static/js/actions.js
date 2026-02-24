@@ -42,6 +42,7 @@ function handleClick(e) {
         send({ type: 'action_done' });
         update('ui.selectedCardId', null);
         update('ui.targetMode', null);
+        update('ui.pendingExtra', null);
         return;
     }
 
@@ -55,9 +56,11 @@ function handleClick(e) {
         return;
     }
 
-    // Contention: Pass
-    if (id === 'btn-contention-pass') {
-        send({ type: 'contention_pass' });
+    // Decoy direction buttons
+    if (btn.dataset.decoyDirection) {
+        send({ type: 'decoy_direction', direction: btn.dataset.decoyDirection });
+        update('ui.targetMode', null);
+        renderStage();
         return;
     }
 
@@ -67,16 +70,73 @@ function handleClick(e) {
         return;
     }
 
-    // Direction selection
-    if (btn.classList.contains('direction-btn')) {
-        const dir = btn.dataset.direction;
-        handleDirectionSelect(dir, st);
+    // Coerce type selection buttons
+    if (btn.dataset.coerceType) {
+        const card = st.ui.pendingAction;
+        const targetId = st.ui.pendingExtra?.targetId;
+        if (card && targetId) {
+            send({
+                type: 'action_play_card',
+                card_id: card.id,
+                target_id: targetId,
+                card_type: btn.dataset.coerceType,
+            });
+            update('ui.selectedCardId', null);
+            update('ui.targetMode', null);
+            update('ui.pendingAction', null);
+            update('ui.pendingExtra', null);
+            updateHandSelection();
+            renderStage();
+        }
         return;
     }
 
-    // Lock target selection
-    if (btn.dataset.lockTarget !== undefined) {
-        handleLockSelect(btn.dataset.lockTarget, st);
+    // Clarify intel card selection buttons
+    if (btn.dataset.intelCardId) {
+        const card = st.ui.pendingAction;
+        const targetId = st.ui.pendingExtra?.targetId;
+        if (card && targetId) {
+            send({
+                type: 'action_play_card',
+                card_id: card.id,
+                target_id: targetId,
+                intel_card_id: btn.dataset.intelCardId,
+            });
+            update('ui.selectedCardId', null);
+            update('ui.targetMode', null);
+            update('ui.pendingAction', null);
+            update('ui.pendingExtra', null);
+            updateHandSelection();
+            renderStage();
+        }
+        return;
+    }
+
+    // Transmission target selection
+    if (btn.dataset.transmitTarget !== undefined && st.ui.targetMode === 'transmit_target') {
+        handleTargetSelect(btn.dataset.transmitTarget, st);
+        return;
+    }
+
+    // Lock choice buttons
+    if (btn.dataset.lockChoice !== undefined && st.ui.targetMode === 'transmit_lock') {
+        const card = st.ui.pendingAction;
+        const targetId = st.ui.pendingExtra?.targetId;
+        if (card && targetId) {
+            update('ui.transmittedCardId', card.id);
+            send({
+                type: 'transmit_card',
+                card_id: card.id,
+                target: targetId,
+                lock: btn.dataset.lockChoice === '1',
+            });
+            update('ui.selectedCardId', null);
+            update('ui.targetMode', null);
+            update('ui.pendingAction', null);
+            update('ui.pendingExtra', null);
+            updateHandSelection();
+            renderStage();
+        }
         return;
     }
 
@@ -139,10 +199,23 @@ function handleCardTap(wrap, st) {
         return;
     }
 
+    // Coerce give mode: only matching cards can be tapped
+    if (st.ui.targetMode === 'coerce_give') {
+        const matchingIds = st.ui.pendingExtra?.matchingIds || [];
+        if (matchingIds.includes(cardId)) {
+            send({ type: 'coerce_response', card_id: cardId });
+            update('ui.targetMode', null);
+            update('ui.pendingExtra', null);
+            renderStage();
+        }
+        return;
+    }
+
     // If already selected, deselect
     if (st.ui.selectedCardId === cardId) {
         update('ui.selectedCardId', null);
         update('ui.targetMode', null);
+        update('ui.pendingExtra', null);
         updateHandSelection();
         renderStage();
         return;
@@ -153,26 +226,33 @@ function handleCardTap(wrap, st) {
 
     // ── Action Phase ──
     if (g.phase === 'action' && isMyTurn && card.action_phase === 'action') {
-        // Cards requiring target
-        if (card.action_effect === 'probe' || card.action_effect === 'coerce') {
-            update('ui.targetMode', card.action_effect);
+        // Probe: pick target
+        if (card.action_effect === 'probe') {
+            update('ui.targetMode', 'probe');
             update('ui.pendingAction', card);
             updateHandSelection();
             renderStage();
-            // Prompt in stage
-            document.getElementById('stage-prompt').textContent =
-                `选择 ${card.action_name} 的目标`;
             return;
         }
+        // Coerce step 1: pick target
+        if (card.action_effect === 'coerce') {
+            update('ui.targetMode', 'coerce');
+            update('ui.pendingAction', card);
+            update('ui.pendingExtra', null);
+            updateHandSelection();
+            renderStage();
+            return;
+        }
+        // Clarify step 1: pick target
         if (card.action_effect === 'clarify') {
             update('ui.targetMode', 'clarify');
             update('ui.pendingAction', card);
+            update('ui.pendingExtra', null);
             updateHandSelection();
             renderStage();
-            document.getElementById('stage-prompt').textContent = '选择要移除黑色情报的玩家';
             return;
         }
-        // No target needed (secret_order)
+        // No target needed — should not happen with current card set
         send({ type: 'action_play_card', card_id: cardId });
         update('ui.selectedCardId', null);
         update('ui.targetMode', null);
@@ -182,35 +262,28 @@ function handleCardTap(wrap, st) {
     // ── Transmission Phase ──
     if (g.phase === 'transmission' && isMyTurn && !g.intel.active) {
         updateHandSelection();
-        // Need direction for 'any' cards
-        if (card.direction === 'any') {
-            showDirectionPicker(card);
-            return;
-        }
-        // Fixed direction — check for lock
-        if (card.has_lock) {
-            showLockPicker(card);
-            return;
-        }
-        // Simple send
-        send({ type: 'transmit_card', card_id: cardId });
+        // Always show target picker — direction is fixed by card
+        showTargetPicker(card);
+        return;
+    }
+
+    // ── Contention Phase (simultaneous) ──
+    if (g.phase === 'contention' && g.contention.active
+        && !g.contention.pendingEffect
+        && card.action_phase === 'contention') {
+        send({ type: 'contention_play', card_id: cardId });
         update('ui.selectedCardId', null);
         return;
     }
 
-    // ── Contention Phase ──
-    if (g.phase === 'contention' && g.contention.askingPlayer === st.myId
-        && card.action_phase === 'contention') {
-        if (card.action_effect === 'switch') {
-            // Need to pick a swap card — for simplicity, prompt selection
-            update('ui.targetMode', 'switch');
-            update('ui.pendingAction', card);
-            updateHandSelection();
-            document.getElementById('stage-prompt').textContent = '再选一张手牌来调包';
-            return;
-        }
-        send({ type: 'contention_play', card_id: cardId });
+    // ── Switch card pick (contention pending) ──
+    if (st.ui.targetMode === 'switch_pick') {
+        update('ui.switchedCardId', cardId);
+        send({ type: 'switch_card', card_id: cardId });
         update('ui.selectedCardId', null);
+        update('ui.targetMode', null);
+        renderStage();
+        renderHand();
         return;
     }
 
@@ -219,16 +292,6 @@ function handleCardTap(wrap, st) {
         && card.action_effect === 'clarify') {
         send({ type: 'clarify_play', card_id: cardId });
         update('ui.selectedCardId', null);
-        return;
-    }
-
-    // ── Switch second card selection ──
-    if (st.ui.targetMode === 'switch' && cardId !== st.ui.pendingAction?.id) {
-        const switchCardId = st.ui.pendingAction.id;
-        send({ type: 'contention_play', card_id: switchCardId, swap_card_id: cardId });
-        update('ui.selectedCardId', null);
-        update('ui.targetMode', null);
-        update('ui.pendingAction', null);
         return;
     }
 
@@ -246,97 +309,88 @@ function handleTargetSelect(targetId, st) {
         return;
     }
 
-    if (mode === 'probe' || mode === 'coerce') {
+    if (mode === 'probe') {
         send({ type: 'action_play_card', card_id: card.id, target_id: targetId });
-    } else if (mode === 'clarify') {
-        send({ type: 'action_play_card', card_id: card.id, target_id: targetId });
-    } else if (mode === 'lock') {
-        // Transmit with lock
-        const dir = st.ui.pendingDirection;
-        send({
-            type: 'transmit_card',
-            card_id: card.id,
-            direction: dir,
-            lock_target: targetId,
-        });
-    }
-
-    update('ui.selectedCardId', null);
-    update('ui.targetMode', null);
-    update('ui.pendingAction', null);
-    updateHandSelection();
-    renderStage();
-}
-
-// ── Direction & Lock Pickers ───────────────────────────────
-
-function showDirectionPicker(card) {
-    const btns = document.getElementById('stage-buttons');
-    const prompt = document.getElementById('stage-prompt');
-    prompt.textContent = '选择传递方向';
-
-    let html = `
-        <button class="direction-btn" data-direction="left">← 左</button>
-        <button class="direction-btn" data-direction="right">→ 右</button>
-    `;
-    btns.innerHTML = html;
-
-    // Store card for when direction is picked
-    update('ui.pendingAction', card);
-}
-
-function handleDirectionSelect(dir, st) {
-    const card = st.ui.pendingAction;
-    if (!card) return;
-
-    if (card.has_lock) {
-        update('ui.pendingDirection', dir);
-        showLockPicker(card, dir);
+        update('ui.selectedCardId', null);
+        update('ui.targetMode', null);
+        update('ui.pendingAction', null);
+        updateHandSelection();
+        renderStage();
         return;
     }
 
-    send({ type: 'transmit_card', card_id: card.id, direction: dir });
-    update('ui.selectedCardId', null);
-    update('ui.pendingAction', null);
+    if (mode === 'coerce') {
+        // Coerce step 2: show card type picker
+        update('ui.targetMode', 'coerce_type');
+        update('ui.pendingExtra', { targetId });
+        renderStage();
+        return;
+    }
+
+    if (mode === 'clarify') {
+        // Clarify step 2: show intel card picker for target
+        const g = st.game;
+        const targetPlayer = g.players[targetId];
+        if (!targetPlayer || targetPlayer.intelArea.length === 0) {
+            update('ui.targetMode', null);
+            update('ui.pendingAction', null);
+            update('ui.selectedCardId', null);
+            updateHandSelection();
+            renderStage();
+            return;
+        }
+        update('ui.targetMode', 'clarify_pick');
+        update('ui.pendingExtra', {
+            targetId,
+            intelCards: targetPlayer.intelArea,
+        });
+        renderStage();
+        return;
+    }
+
+    if (mode === 'transmit_target') {
+        if (card.has_lock) {
+            // Lockable card: ask player whether to lock
+            update('ui.targetMode', 'transmit_lock');
+            update('ui.pendingExtra', { targetId });
+            renderStage();
+            return;
+        }
+        update('ui.transmittedCardId', card.id);
+        send({
+            type: 'transmit_card',
+            card_id: card.id,
+            target: targetId,
+            lock: false,
+        });
+        update('ui.selectedCardId', null);
+        update('ui.targetMode', null);
+        update('ui.pendingAction', null);
+        update('ui.pendingExtra', null);
+        updateHandSelection();
+        renderStage();
+        return;
+    }
 }
 
-function showLockPicker(card, direction) {
+// ── Target Picker (Transmission) ──────────────────────────
+
+function showTargetPicker(card) {
     const st = getState();
     const g = st.game;
     const prompt = document.getElementById('stage-prompt');
     const btns = document.getElementById('stage-buttons');
 
-    prompt.textContent = '选择锁定目标（或不锁定）';
+    prompt.textContent = '选择情报传递目标';
 
     const alivePlayers = g.turnOrder.filter(pid =>
         pid !== st.myId && g.players[pid]?.alive
     );
 
-    let html = alivePlayers.map(pid =>
-        `<button class="btn btn-sm btn-secondary" data-lock-target="${pid}">${g.playerNames[pid]}</button>`
+    btns.innerHTML = alivePlayers.map(pid =>
+        `<button class="btn btn-sm btn-secondary" data-transmit-target="${pid}">${g.playerNames[pid]}</button>`
     ).join('');
-    html += `<button class="btn btn-sm btn-accent" data-lock-target="">不锁定</button>`;
-    btns.innerHTML = html;
 
     update('ui.pendingAction', card);
-    update('ui.targetMode', 'lock');
-    if (direction) update('ui.pendingDirection', direction);
-}
-
-function handleLockSelect(lockTarget, st) {
-    const card = st.ui.pendingAction;
-    if (!card) return;
-
-    const dir = card.direction === 'any' ? (st.ui.pendingDirection || 'left') : undefined;
-
-    send({
-        type: 'transmit_card',
-        card_id: card.id,
-        direction: dir,
-        lock_target: lockTarget || undefined,
-    });
-
-    update('ui.selectedCardId', null);
-    update('ui.pendingAction', null);
-    update('ui.targetMode', null);
+    update('ui.targetMode', 'transmit_target');
 }

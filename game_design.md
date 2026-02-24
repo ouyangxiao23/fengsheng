@@ -7,7 +7,7 @@
 **Platform**: Mobile Web (Touch optimized)
 
 ### 1.1 Core Concept
-Players act as agents belonging to three opposing factions. The game uses a **single unified deck** — every card has both an **Action function** (e.g., Intercept, Probe, Clarify) and an **Intelligence color** (Red, Blue, or Black). A card can be played for its action effect *or* passed face-down as intelligence, but not both — choosing how to use each card is the core tension.
+Players act as agents belonging to three opposing factions. The game uses a **single unified deck of 42 cards (14 red / 14 blue / 14 black)** — every card has both an **Action function** (e.g., Intercept, Probe, Clarify) and an **Intelligence color** (Red, Blue, or Black). A card can be played for its action effect *or* passed face-down as intelligence, but not both — choosing how to use each card is the core tension.
 
 The objective is to collect cards of your faction's intelligence color in your Intelligence Area, while using action abilities to manipulate, intercept, and deceive.
 
@@ -30,8 +30,8 @@ Every card in the shared deck has **two aspects**:
 A single card can only be used **one way** per turn: either played for its action, or sent as intelligence. This creates constant tension — a powerful action card might also be the intelligence color you desperately need (or desperately want to avoid receiving).
 
 **Card Attributes:**
-*   **Direction Arrow** (↙ Left / ↘ Right / ↕ Any): Determines which way the card travels when sent as intelligence.
-*   **Lock Icon** 🔒: If present, the sender can designate a specific player who *must* accept the intelligence.
+*   **Direction Arrow** (← Left / → Right / ↑ Straight): Determines which way the card travels when sent as intelligence. Left/Right cards pass through intermediate players; Straight cards go directly to the target.
+*   **Lock Icon** 🔒: If present, the designated target *must* accept the intelligence when it arrives.
 *   **Hidden Icon** 🙈: If present, the action card must be played face-down.
 
 ### 1.5 Turn Phases
@@ -39,19 +39,21 @@ Each player's turn consists of 5 strict phases:
 
 1.  **Draw Phase**: Draw **3 cards** from the deck.
 2.  **Action Phase**:
-    *   Player may play any number of hand cards for their **action function**, if the card is marked "Action Phase" (e.g., *Probe*, *Coerce*).
+    *   Player may play any number of hand cards for their **action function**, if the card is marked "Action Phase" (e.g., *Probe*, *Coerce*, *Clarify*).
+    *   **Coerce**: Choose a target player and a card type (Intercept/Switch/Clarify/Decoy). If the target has a matching card, they must give one. If they have none, their full hand is revealed to the coercer.
+    *   **Clarify**: Choose a target player and one of their intel cards (any color) to remove.
     *   *Hidden Actions*: Cards with the 🙈 icon are played face-down.
     *   Used action cards go to the discard pile.
 3.  **Transmission Phase (Mandatory)**:
-    *   Player **MUST** choose 1 hand card and send it **face-down** as intelligence.
+    *   Player **MUST** choose 1 hand card and send it **face-down** as intelligence, designating a **target player**.
     *   The card's **intelligence color** (not its action) is what matters — it will be revealed when received.
-    *   **Direction**: Follows the card's direction arrow (Left / Right / Any).
-    *   **Targeting**: If the card has the 🔒 Lock icon, sender designates a player who *must* accept.
-    *   Players along the path may choose to "accept" or "pass along" the intelligence.
-    *   If the intelligence circles back to the sender, they must accept it themselves.
+    *   **Direction**: Follows the card's direction arrow (Left / Right / Straight).
+        *   **Left/Right**: Card moves one player at a time. Intermediate players may "accept" or "pass along". When the card reaches the target: if locked, target must accept; if not locked, target may accept or **refuse** (card returns to sender who must accept).
+        *   **Straight**: Card goes directly to the target (no intermediate players). Same lock/no-lock rules apply at the target.
+    *   **Lock**: A card property (🔒 icon). If the card has lock, the target *must* accept when the card arrives.
     *   *Failure penalty*: If a player has **no hand cards** to transmit, they are immediately **Eliminated**.
 4.  **Contention Phase**:
-    *   Once a player declares they will accept the intelligence, all players may play hand cards marked "Contention Phase" for their **action function** (e.g., *Intercept*, *Switch*).
+    *   Once a player declares they will accept the intelligence, all players may play hand cards marked "Contention Phase" for their **action function** (e.g., *Intercept*, *Switch*, *Decoy*).
     *   Players take turns deciding whether to play contention cards, until all pass.
 5.  **Reception Phase**:
     *   The intelligence card is **flipped face-up** and placed in the receiver's **Intelligence Area**. Its intelligence color is now public.
@@ -60,7 +62,7 @@ Each player's turn consists of 5 strict phases:
 
 ### 1.6 Death & Elimination
 *   **Trigger**: Collecting 3 cards with Black intelligence color in Intelligence Area.
-*   **Rescue**: Starting from the current player, going counter-clockwise, each player is asked whether they will play a *Clarify* card (using its action function). If someone does and it removes a black card, the player survives. If no one helps, the player **dies**.
+*   **Rescue**: Starting from the current player, going counter-clockwise, each player is asked whether they will play a *Clarify* card (using its action function) to remove a black intel card. If someone does, the player survives. If no one helps, the player **dies**.
 *   **Death Rattle**:
     1.  Dying player may gift up to 3 hand cards to *one* other living player.
     2.  Remaining hand cards and all Intelligence Area cards are discarded face-up.
@@ -172,7 +174,7 @@ Every card must clearly communicate **two identities**: its intelligence color a
     *   `.card-action-name`: Top banner showing the action name (e.g., "截获 Intercept", "试探 Probe").
     *   `.card-icon`: Central big emoji/icon for the action (e.g., 🛡️ for Clarify, 🎯 for Lock, 🔄 for Switch).
     *   `.card-phase-tag`: Small tag indicating when the action can be played: "出牌阶段" (Action Phase) or "争夺阶段" (Contention Phase).
-    *   `.card-direction`: Arrow icon in corner showing intelligence direction (↙ / ↘ / ↕).
+    *   `.card-direction`: Arrow icon in corner showing intelligence direction (← Left / → Right / ↑ Straight).
     *   `.card-lock`: 🔒 icon if the card has the Lock attribute.
     *   `.card-corner`: Top-left and bottom-right corners repeat the intel color pip for quick scanning in a fanned hand.
 *   **Card Back**: Uniform design (no information revealed) — critical since intelligence is sent face-down.

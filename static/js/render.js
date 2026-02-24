@@ -3,17 +3,11 @@
  */
 
 import { getState, update } from './state.js';
-import { IDENTITY_NAMES, IDENTITY_COLORS, PHASE_ORDER, getName } from './constants.js';
-import { ensureIntelCard, removeIntelCard, intelRestPosition, setAvatarPositions, setTableEllipse, getAvatarPositions } from './animations.js';
+import { IDENTITY_NAMES, IDENTITY_COLORS, PHASE_ORDER, getName, colorName } from './constants.js';
+import { ensureIntelCard, intelRestPosition, setAvatarPositions, setTableEllipse, getAvatarPositions } from './animations.js';
 
 // Track which card IDs have already been rendered (for entrance animation)
 const seenHandCardIds = new Set();
-
-// ── Shared State Reset ──────────────────────────────────────
-
-export function resetHandAnimationState() {
-    seenHandCardIds.clear();
-}
 
 // ── Avatar Helpers ──────────────────────────────────────────
 
@@ -41,6 +35,37 @@ export function renderAll() {
     renderStage();
     renderMyIntel();
     renderHand();
+}
+
+// ── ResizeObserver — re-render zones when their pixel size changes ──────────
+let _resizeInstalled = false;
+export function installResizeObservers() {
+    if (_resizeInstalled) return;
+    _resizeInstalled = true;
+
+    const tableArea = document.getElementById('table-area');
+    const handArea  = document.getElementById('my-hand');
+
+    if (typeof ResizeObserver !== 'undefined') {
+        // Debounce to avoid layout thrash on every pixel change
+        let tableTimer = null, handTimer = null;
+
+        new ResizeObserver(() => {
+            clearTimeout(tableTimer);
+            tableTimer = setTimeout(() => renderTable(), 30);
+        }).observe(tableArea);
+
+        new ResizeObserver(() => {
+            clearTimeout(handTimer);
+            handTimer = setTimeout(() => renderHand(), 30);
+        }).observe(handArea);
+    }
+
+    // Fallback for older browsers
+    window.addEventListener('resize', () => {
+        renderTable();
+        renderHand();
+    });
 }
 
 function renderRibbon() {
@@ -73,9 +98,9 @@ export function renderTable() {
     const w = area.clientWidth || 360;
     const h = area.clientHeight || 200;
     const cx = w / 2;
-    const cy = h * 0.50;   // centre of area so full ellipse is visible
-    const rx = w * 0.42;
-    const ry = h * 0.44;
+    const cy = h * 0.48;   // slightly above centre — more space at bottom for self avatar
+    const rx = w * 0.30;   // narrower → taller-looking oval
+    const ry = h * 0.40;   // slightly smaller ry to leave room for avatars outside
 
     // Cache ellipse params in animations module
     setTableEllipse({ cx, cy, rx, ry });
@@ -196,8 +221,15 @@ export function renderTable() {
         if (!p) continue;
 
         const angle = playerAngle(i);
-        const x = cx + rx * Math.cos(angle);
-        const y = cy - ry * Math.sin(angle);
+        // Point on ellipse rim
+        const px0 = cx + rx * Math.cos(angle);
+        const py0 = cy - ry * Math.sin(angle);
+        // Push avatar outward from ellipse centre along the radial direction
+        const dx = px0 - cx, dy = py0 - cy;
+        const dlen = Math.sqrt(dx * dx + dy * dy) || 1;
+        const outset = 34;   // px beyond the ellipse rim
+        const x = px0 + (dx / dlen) * outset;
+        const y = py0 + (dy / dlen) * outset;
 
         newPositions[pid] = { x, y, angle };
 
@@ -286,26 +318,59 @@ export function renderStage() {
             prompt.textContent = isMyTurn ? '正在摸牌...' : `${getName(g.currentPlayer)} 摸牌中`;
             break;
 
-        case 'action':
-            if (isMyTurn) {
+        case 'action': {
+            const targetMode = st.ui.targetMode;
+            if (targetMode === 'coerce_type') {
+                // Coerce step 2: pick card type
+                prompt.textContent = '选择要威逼的牌类型';
+                btns.innerHTML = `
+                    <button class="btn btn-sm btn-secondary" data-coerce-type="intercept">截获</button>
+                    <button class="btn btn-sm btn-secondary" data-coerce-type="switch">调包</button>
+                    <button class="btn btn-sm btn-secondary" data-coerce-type="clarify">澄清</button>
+                    <button class="btn btn-sm btn-secondary" data-coerce-type="decoy">误导</button>
+                `;
+            } else if (targetMode === 'clarify_pick') {
+                // Clarify step 2: pick which intel to remove
+                const intelCards = st.ui.pendingExtra?.intelCards || [];
+                prompt.textContent = '选择要移除的情报';
+                btns.innerHTML = intelCards.map(c =>
+                    `<button class="btn btn-sm intel-pick-btn intel-pick-${c.intel_color}" data-intel-card-id="${c.id}">${colorName(c.intel_color)}</button>`
+                ).join('');
+            } else if (targetMode === 'coerce_give') {
+                // Target must choose a card to give
+                const cardType = st.ui.pendingExtra?.cardType || '';
+                const typeNames = { intercept: '截获', switch: '调包', clarify: '澄清', decoy: '误导' };
+                prompt.textContent = `选择一张${typeNames[cardType] || cardType}牌交出`;
+            } else if (targetMode === 'probe' || targetMode === 'coerce' || targetMode === 'clarify') {
+                // Targeting mode — don't show done button
+                // prompt is set by actions.js
+            } else if (isMyTurn) {
                 prompt.textContent = '选择手牌使用或点击完成';
                 btns.innerHTML = `<button class="btn btn-accent btn-sm" id="btn-action-done">完成出牌</button>`;
             } else {
                 prompt.textContent = `${getName(g.currentPlayer)} 出牌中...`;
             }
             break;
+        }
 
         case 'transmission':
             if (g.intel.active) {
                 // Card lives on the table next to the facing player — not in the stage slot
                 const facingName = getName(g.intel.facing);
-                const dir = g.intel.direction === 'left' ? '←左' : '→右';
-                prompt.textContent = `情报(${dir})在 ${facingName} 面前`;
+                const targetName = getName(g.intel.target);
+                const dir = g.intel.direction === 'left' ? '←左' : g.intel.direction === 'right' ? '→右' : '↑直达';
+                prompt.textContent = `情报(${dir})发往 ${targetName}，在 ${facingName} 面前`;
 
                 if (g.intel.facing === myId) {
+                    const isTarget = g.intel.target === myId;
                     const locked = g.intel.isLocked && g.intel.lockTarget === myId;
-                    if (locked) {
+                    if (isTarget && locked) {
                         prompt.textContent = '你被锁定，必须接收情报';
+                    } else if (isTarget) {
+                        btns.innerHTML = `
+                            <button class="btn btn-accent btn-sm" id="btn-accept">接收</button>
+                            <button class="btn btn-secondary btn-sm" id="btn-pass">拒绝</button>
+                        `;
                     } else {
                         btns.innerHTML = `
                             <button class="btn btn-accent btn-sm" id="btn-accept">接收</button>
@@ -321,15 +386,24 @@ export function renderStage() {
             break;
 
         case 'contention': {
-            // Card lives on the table — no duplicate in the stage slot
-            const receiverName = getName(g.intel.acceptedBy);
-            prompt.textContent = `${receiverName} 将接收情报`;
-
-            if (g.contention.askingPlayer === myId) {
-                prompt.textContent = '是否使用争夺牌？';
-                btns.innerHTML = `<button class="btn btn-secondary btn-sm" id="btn-contention-pass">放弃</button>`;
-            } else if (g.contention.askingPlayer) {
-                prompt.textContent += ` (${getName(g.contention.askingPlayer)} 决定中)`;
+            const ct = g.contention;
+            if (ct.pendingEffect === 'decoy' && ct.pendingPlayer === myId) {
+                prompt.textContent = '选择误导方向';
+                btns.innerHTML = `
+                    <button class="btn btn-sm btn-secondary" data-decoy-direction="left">← 左</button>
+                    <button class="btn btn-sm btn-secondary" data-decoy-direction="right">→ 右</button>
+                `;
+            } else if (ct.pendingEffect === 'decoy') {
+                prompt.textContent = `${getName(ct.pendingPlayer)} 选择误导方向中...`;
+            } else if (ct.pendingEffect === 'switch' && ct.pendingPlayer === myId) {
+                prompt.textContent = '选择手牌替换情报';
+            } else if (ct.pendingEffect === 'switch') {
+                prompt.textContent = `${getName(ct.pendingPlayer)} 选择调包牌中...`;
+            } else if (ct.active) {
+                const receiverName = getName(g.intel.acceptedBy);
+                prompt.textContent = `${receiverName} 将接收情报`;
+            } else {
+                prompt.textContent = '争夺结束';
             }
             break;
         }
@@ -366,6 +440,11 @@ export function renderStage() {
         const hasContent = prompt.textContent.trim() || btns.innerHTML.trim();
         actionBar.style.display = hasContent ? 'flex' : 'none';
     }
+
+    // Active state: prompt is highlighted when player needs to act
+    const hasButtons = btns.innerHTML.trim().length > 0;
+    const isTargeting = !!st.ui.targetMode;
+    prompt.classList.toggle('prompt-active', hasButtons || isTargeting);
 }
 
 function renderMyIntel() {
@@ -415,10 +494,10 @@ export function renderHand() {
     const arcDeg = n === 1 ? 0 : Math.min(60, 8 * (n - 1));
     const arcRad = arcDeg * Math.PI / 180;
     const R = 380;
-    // Pivot is the center-bottom of the fan circle, far below screen
-    // Offset 60px so cards sit well above the bottom ribbon
+    // Pivot: place fan so card tops appear near the top of the container.
+    // containerH is ~130px; cards are 108px tall; we want cards to fill the box.
     const pivotX = containerW / 2;
-    const pivotY = containerH + R - 60;
+    const pivotY = containerH + R - 30;  // 30px clearance from bottom
 
     // Determine playable state
     const isMyTurn = g.currentPlayer === st.myId;
@@ -489,10 +568,18 @@ export function updateHandSelection() {
 function isCardPlayable(card, game, st) {
     const isMyTurn = game.currentPlayer === st.myId;
 
+    // Coerce give mode: only matching cards are playable
+    if (st.ui.targetMode === 'coerce_give') {
+        const matchingIds = st.ui.pendingExtra?.matchingIds || [];
+        return matchingIds.includes(card.id);
+    }
+
     if (game.phase === 'action' && isMyTurn && card.action_phase === 'action') return true;
     if (game.phase === 'transmission' && isMyTurn && !game.intel.active) return true;
-    if (game.phase === 'contention' && game.contention.askingPlayer === st.myId
+    if (game.phase === 'contention' && game.contention.active
+        && !game.contention.pendingEffect
         && card.action_phase === 'contention') return true;
+    if (st.ui.targetMode === 'switch_pick') return true;
     if (game.phase === 'dying' && game.dying.askingPlayer === st.myId
         && card.action_effect === 'clarify') return true;
 
@@ -507,13 +594,12 @@ export function createCardElement(card, dimmed = false) {
     const phaseText = card.action_phase === 'action' ? '出牌' : '争夺';
 
     // Direction arrow: clean CSS arrows
-    const dirLabel = card.direction === 'left' ? '←' : card.direction === 'right' ? '→' : '⇄';
-    const dirTitle = card.direction === 'left' ? '左传' : card.direction === 'right' ? '右传' : '任意';
+    const dirLabel = card.direction === 'left' ? '←' : card.direction === 'right' ? '→' : '↑';
+    const dirTitle = card.direction === 'left' ? '左传' : card.direction === 'right' ? '右传' : '直达';
 
     // Build attribute badges
     let badgesHtml = `<span class="card-badge card-badge-dir" title="${dirTitle}">${dirLabel}</span>`;
-    if (card.has_lock) badgesHtml += '<span class="card-badge card-badge-lock" title="锁定">锁</span>';
-    if (card.has_hidden) badgesHtml += '<span class="card-badge card-badge-hidden" title="暗置">密</span>';
+    if (card.has_lock) badgesHtml += '<span class="card-badge card-badge-lock" title="锁定">🔒</span>';
 
     el.innerHTML = `
         <div class="card-header">
