@@ -23,12 +23,16 @@ function handleClick(e) {
         return;
     }
 
-    // ── Avatar tapped (for targeting) ────────────────────
-    const avatarWrap = e.target.closest('.avatar-wrap');
-    if (avatarWrap && st.ui.targetMode) {
-        const targetId = avatarWrap.dataset.playerId;
-        handleTargetSelect(targetId, st);
-        return;
+    // ── Player pill tapped (for targeting) ────────────────
+    const playerPill = e.target.closest('.player-pill-g');
+    if (playerPill && st.ui.targetMode) {
+        const targetId = playerPill.getAttribute('data-pid');
+        if (targetId) { handleTargetSelect(targetId, st); return; }
+    }
+    const wedge = e.target.closest('.wedge');
+    if (wedge && st.ui.targetMode) {
+        const targetId = wedge.dataset.pid;
+        if (targetId) { handleTargetSelect(targetId, st); return; }
     }
 
     // ── Stage buttons ────────────────────────────────────

@@ -1,86 +1,98 @@
 /**
- * Intel card lifecycle and Web Animations API helpers.
+ * Intel arc lifecycle, animation helpers, and played-card floats.
  */
 
 // ── Module State ─────────────────────────────────────────
 
-let intelCardEl = null;
 let avatarPositions = {};
-let tableEllipse = { cx: 0, cy: 0, rx: 0, ry: 0 };
+let tableGeometry = null;
 
 // ── Getters / Setters for shared state ───────────────────
 
 export function getAvatarPositions() { return avatarPositions; }
 export function setAvatarPositions(obj) { avatarPositions = obj; }
-export function getTableEllipse() { return tableEllipse; }
-export function setTableEllipse(obj) { tableEllipse = obj; }
+export function setTableGeometry(obj) { tableGeometry = obj; }
+export function getTableGeometry() { return tableGeometry; }
 
-// ── Persistent Table Intel Card ──────────────────────────
+// ── Geometry Helpers ─────────────────────────────────────
 
-export function removeIntelCard() {
-    if (intelCardEl) {
-        intelCardEl.remove();
-        intelCardEl = null;
-    }
+function ptOnEllipse(cx, cy, rx, ry, a) {
+    return { x: cx + rx * Math.cos(a), y: cy - ry * Math.sin(a) };
 }
 
-export function ensureIntelCard() {
-    const layer = document.getElementById('intel-anim-layer');
-    if (!layer) return null;
-    if (!intelCardEl || !intelCardEl.parentElement) {
-        intelCardEl = document.createElement('div');
-        intelCardEl.id = 'intel-on-table';
-        intelCardEl.className = 'card-back';
-        intelCardEl.style.cssText = `
-            width: 48px; height: 72px; font-size: 16px; border-radius: 4px;
-            position: absolute; left: 0; top: 0;
-            pointer-events: none;
-            transform-origin: center center;
-            z-index: 62;
-            transition: none;
-        `;
-        layer.appendChild(intelCardEl);
-    }
-    return intelCardEl;
+function intelArcPath(cx, cy, rx, ry, centerAngle, halfSpan) {
+    const a1 = centerAngle - halfSpan;
+    const a2 = centerAngle + halfSpan;
+    const span = Math.abs(a2 - a1);
+    const large = span > Math.PI + 0.001 ? 1 : 0;
+    const p1 = ptOnEllipse(cx, cy, rx, ry, a1);
+    const p2 = ptOnEllipse(cx, cy, rx, ry, a2);
+    return `M ${cx} ${cy} L ${p1.x} ${p1.y} A ${rx} ${ry} 0 ${large} 0 ${p2.x} ${p2.y} Z`;
 }
 
-/**
- * Returns the layer-relative resting position {lx, ly} for the card when
- * it sits in front of a player.  Players on the ellipse get a small inward
- * offset so the card appears "on the table" rather than over the avatar.
- */
-export function intelRestPosition(pid) {
-    const layer = document.getElementById('intel-anim-layer');
-    const tableArea = document.getElementById('table-area');
-    if (!layer || !tableArea) return null;
-    const layerRect = layer.getBoundingClientRect();
-    const areaRect  = tableArea.getBoundingClientRect();
+function easeInOut(t) {
+    return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+}
 
-    const pos = avatarPositions[pid];
-    if (!pos) return null;
-    const a = pos.angle;
-    // Move card 38px inward (toward table centre) from the avatar
-    const inx = -Math.cos(a);
-    const iny =  Math.sin(a);
-    return {
-        lx: areaRect.left + pos.x + inx * 38 - layerRect.left,
-        ly: areaRect.top  + pos.y + iny * 38 - layerRect.top,
-        angle: a,
-    };
+// ── Player Arc Angle ─────────────────────────────────────
+
+export function getPlayerArcAngle(pid) {
+    if (!tableGeometry) return null;
+    const angle = tableGeometry.playerAngles[pid];
+    if (angle === undefined) return null;
+    return { centerAngle: angle, halfSpan: Math.PI / tableGeometry.N };
+}
+
+// ── Persistent Intel Arc ─────────────────────────────────
+
+export function ensureIntelArc() {
+    return document.getElementById('intel-arc') || null;
+}
+
+export function removeIntelArc() {
+    const arc = document.getElementById('intel-arc');
+    if (arc) arc.classList.add('hidden');
+    const reveal = document.getElementById('intel-reveal-ellipse');
+    if (reveal) reveal.classList.add('hidden');
+    const text = document.getElementById('intel-reveal-text');
+    if (text) text.classList.add('hidden');
+}
+
+// Backward-compatible aliases for handler imports
+export { removeIntelArc as removeIntelCard };
+export { ensureIntelArc as ensureIntelCard };
+
+// ── Update Intel Arc Position ────────────────────────────
+
+export function updateIntelArcPosition(pid) {
+    if (!tableGeometry) return;
+    const arc = document.getElementById('intel-arc');
+    if (!arc) return;
+    const info = getPlayerArcAngle(pid);
+    if (!info) return;
+
+    const d = intelArcPath(
+        tableGeometry.cx, tableGeometry.cy,
+        tableGeometry.inner.rx, tableGeometry.inner.ry,
+        info.centerAngle, info.halfSpan
+    );
+    arc.setAttribute('d', d);
+    arc.classList.remove('hidden');
 }
 
 // ── Card From Hand Animation ─────────────────────────────
 
 /**
  * Animates a card-back from a screen position (where the hand card was)
- * up to a player's rest position on the table, then calls onComplete.
- * If startRect is null, falls back to bottom-centre of screen.
+ * to the sender's section on the inner ellipse, then shows the intel arc.
  */
 export function animateCardFromHand(startRect, toPid, onComplete) {
     const layer = document.getElementById('intel-anim-layer');
-    if (!layer) { onComplete(); return; }
+    const tableArea = document.getElementById('table-area');
+    if (!layer || !tableArea || !tableGeometry) { onComplete(); return; }
 
     const layerRect = layer.getBoundingClientRect();
+    const areaRect = tableArea.getBoundingClientRect();
 
     // Start position (centre of the hand card, layer-relative)
     let sx, sy;
@@ -92,11 +104,13 @@ export function animateCardFromHand(startRect, toPid, onComplete) {
         sy = layerRect.height - 36;
     }
 
-    // End position (intel rest position near the player on the table)
-    const rp = intelRestPosition(toPid);
-    if (!rp) { onComplete(); return; }
-    const ex = rp.lx - 24;
-    const ey = rp.ly - 36;
+    // End position: center of sender's section on inner ellipse (layer-relative)
+    const angle = tableGeometry.playerAngles[toPid];
+    if (angle === undefined) { onComplete(); return; }
+    const target = ptOnEllipse(tableGeometry.cx, tableGeometry.cy,
+        tableGeometry.inner.rx, tableGeometry.inner.ry, angle);
+    const ex = areaRect.left + target.x - layerRect.left - 24;
+    const ey = areaRect.top + target.y - layerRect.top - 36;
 
     // Create a temporary card-back for the flight
     const temp = document.createElement('div');
@@ -112,7 +126,7 @@ export function animateCardFromHand(startRect, toPid, onComplete) {
 
     const anim = temp.animate([
         { transform: `translate(${sx}px, ${sy}px) scale(1.3)`, opacity: 1 },
-        { transform: `translate(${ex}px, ${ey}px) scale(1.0)`, opacity: 1 },
+        { transform: `translate(${ex}px, ${ey}px) scale(0.5)`, opacity: 0.7 },
     ], {
         duration: 420,
         easing: 'cubic-bezier(0.4, 0, 0.2, 1)',
@@ -121,6 +135,8 @@ export function animateCardFromHand(startRect, toPid, onComplete) {
 
     anim.onfinish = () => {
         temp.remove();
+        // Show the intel arc at sender's section
+        updateIntelArcPosition(toPid);
         onComplete();
     };
 }
@@ -137,13 +153,13 @@ export function showPlayedCard(playerId, cardEl) {
     const pos = avatarPositions[playerId];
     if (!pos) return;
 
-    // Position outward from table center (opposite of intel inward offset)
+    // Position inward from avatar toward table center
     const a = pos.angle;
-    const outX = Math.cos(a);   // outward direction (away from center)
-    const outY = -Math.sin(a);
-    const offset = 55;          // px outward from avatar
-    const lx = areaRect.left + pos.x + outX * offset - layerRect.left;
-    const ly = areaRect.top  + pos.y + outY * offset - layerRect.top;
+    const inX = -Math.cos(a);
+    const inY =  Math.sin(a);
+    const offset = 40;
+    const lx = areaRect.left + pos.x + inX * offset - layerRect.left;
+    const ly = areaRect.top  + pos.y + inY * offset - layerRect.top;
 
     // Stack offset: count existing floats for this player
     const existing = layer.querySelectorAll(`.played-card-float[data-player="${playerId}"]`);
@@ -174,7 +190,6 @@ export function showPlayedCard(playerId, cardEl) {
     ], { duration: 300, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)', fill: 'forwards' });
 
     popIn.onfinish = () => {
-        // Hold, then fade out
         setTimeout(() => {
             const fadeOut = wrap.animate([
                 { opacity: 1 },
@@ -185,185 +200,166 @@ export function showPlayedCard(playerId, cardEl) {
     };
 }
 
-// ── Intel Arc Animation ──────────────────────────────────
+// ── Intel Arc Morph Animation ────────────────────────────
 
 export function animateIntelAlongArc(fromPid, toPid, onComplete, direction) {
-    const layer = document.getElementById('intel-anim-layer');
-    const tableArea = document.getElementById('table-area');
-    if (!layer || !tableArea) { onComplete(); return; }
+    if (!tableGeometry) { onComplete(); return; }
 
-    const layerRect = layer.getBoundingClientRect();
-    const areaRect  = tableArea.getBoundingClientRect();
-    const ecx = areaRect.left + tableEllipse.cx - layerRect.left;
-    const ecy = areaRect.top  + tableEllipse.cy - layerRect.top;
-    const erx = tableEllipse.rx;
-    const ery = tableEllipse.ry;
+    const fromInfo = getPlayerArcAngle(fromPid);
+    const toInfo = getPlayerArcAngle(toPid);
+    if (!fromInfo || !toInfo) { onComplete(); return; }
 
-    const from = intelRestPosition(fromPid);
-    const to   = intelRestPosition(toPid);
-    if (!from || !to) { onComplete(); return; }
+    const arc = ensureIntelArc();
+    if (!arc) { onComplete(); return; }
 
-    const card = ensureIntelCard();
-    if (!card) { onComplete(); return; }
+    // Ensure arc is visible at the from position
+    updateIntelArcPosition(fromPid);
 
-    // direction is passed by caller: 'left', 'right', or 'straight'
+    const fromAngle = fromInfo.centerAngle;
+    const toAngle = toInfo.centerAngle;
+    const halfSpan = fromInfo.halfSpan;
 
-    const STEPS = 48;
-    const keyframes = [];
-
-    if (direction === 'straight') {
-        // Straight: move in a direct line between rest positions
-        for (let s = 0; s <= STEPS; s++) {
-            const t  = s / STEPS;
-            const px = from.lx + (to.lx - from.lx) * t;
-            const py = from.ly + (to.ly - from.ly) * t;
-            keyframes.push({ transform: `translate(${px - 24}px, ${py - 36}px)` });
-        }
+    let delta = toAngle - fromAngle;
+    if (direction === 'right') {
+        if (delta <= 0) delta += 2 * Math.PI;
+    } else if (direction === 'left') {
+        if (delta >= 0) delta -= 2 * Math.PI;
     } else {
-        // Left/right: slide along the inset ellipse arc
-        // "right" = next seat = CCW on screen (angle increases)
-        // "left"  = prev seat = CW on screen (angle decreases)
-        let delta = to.angle - from.angle;
-        if (direction === 'right') {
-            if (delta <= 0) delta += 2 * Math.PI;
-        } else if (direction === 'left') {
-            if (delta >= 0) delta -= 2 * Math.PI;
-        } else {
-            // Fallback: shortest path
-            if (delta > Math.PI) delta -= 2 * Math.PI;
-            if (delta < -Math.PI) delta += 2 * Math.PI;
-        }
-
-        const inset = 38;
-        for (let s = 0; s <= STEPS; s++) {
-            const t   = s / STEPS;
-            const a   = from.angle + delta * t;
-            const inx = -Math.cos(a);
-            const iny =  Math.sin(a);
-            const px  = ecx + erx * Math.cos(a) + inx * inset;
-            const py  = ecy - ery * Math.sin(a) + iny * inset;
-            keyframes.push({ transform: `translate(${px - 24}px, ${py - 36}px)` });
-        }
+        // Straight / shortest path
+        if (delta > Math.PI) delta -= 2 * Math.PI;
+        if (delta < -Math.PI) delta += 2 * Math.PI;
     }
 
-    // Duration scales with distance
-    let duration;
-    if (direction === 'straight') {
-        const dx = to.lx - from.lx;
-        const dy = to.ly - from.ly;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        duration = Math.round(300 + dist * 1.5);
-    } else {
-        let delta = to.angle - from.angle;
-        if (direction === 'right') {
-            if (delta <= 0) delta += 2 * Math.PI;
-        } else if (direction === 'left') {
-            if (delta >= 0) delta -= 2 * Math.PI;
+    // Duration scales with angular distance
+    const arcFraction = Math.abs(delta) / Math.PI;
+    const duration = Math.round(400 + 500 * Math.min(arcFraction, 1));
+
+    const { cx, cy, inner } = tableGeometry;
+    const start = performance.now();
+
+    function frame(now) {
+        const t = Math.min(1, (now - start) / duration);
+        const eased = easeInOut(t);
+        const currentAngle = fromAngle + delta * eased;
+        const d = intelArcPath(cx, cy, inner.rx, inner.ry, currentAngle, halfSpan);
+        arc.setAttribute('d', d);
+        if (t < 1) {
+            requestAnimationFrame(frame);
         } else {
-            if (delta > Math.PI) delta -= 2 * Math.PI;
-            if (delta < -Math.PI) delta += 2 * Math.PI;
+            onComplete();
         }
-        const arcFraction = Math.abs(delta) / Math.PI;
-        duration = Math.round(400 + 500 * Math.min(arcFraction, 1));
     }
-
-    const anim = card.animate(keyframes, {
-        duration,
-        easing: 'ease-in-out',
-        fill: 'forwards',
-    });
-
-    anim.onfinish = () => {
-        // Commit final position as inline style so the card STAYS there
-        card.style.transform = keyframes[keyframes.length - 1].transform;
-        onComplete();
-    };
+    requestAnimationFrame(frame);
 }
 
 // ── Intel Reveal Animation ───────────────────────────────
 
 export function animateIntelReveal(color, receiverPid, onComplete) {
-    const layer = document.getElementById('intel-anim-layer');
-    if (!layer) { onComplete(); return; }
+    if (!tableGeometry) { onComplete(); return; }
 
-    // Position the reveal at the receiver's avatar on the table
-    let cx, cy;
-    const rp = intelRestPosition(receiverPid);
-    if (rp) {
-        cx = rp.lx - 24;   // rp.lx is card centre; subtract half-card for left
-        cy = rp.ly - 36;   // rp.ly is card centre; subtract half-card for top
-    } else {
-        // Fallback: centre of screen
-        const layerRect2 = layer.getBoundingClientRect();
-        cx = layerRect2.width  / 2 - 24;
-        cy = layerRect2.height / 2 - 36;
-    }
+    const info = getPlayerArcAngle(receiverPid);
+    if (!info) { onComplete(); return; }
 
-    // Create 3D flip container
-    const container = document.createElement('div');
-    container.className = 'card-3d';
-    container.style.cssText = `
-        position: absolute; left: ${cx}px; top: ${cy}px;
-        width: 48px; height: 72px;
-        transform-style: preserve-3d;
-        pointer-events: none;
-    `;
+    const arc = document.getElementById('intel-arc');
+    const revealEl = document.getElementById('intel-reveal-ellipse');
+    const revealText = document.getElementById('intel-reveal-text');
+    if (!arc) { onComplete(); return; }
 
-    // Back face (initially visible)
-    const backFace = document.createElement('div');
-    backFace.className = 'card-back card-back-face';
-    backFace.style.cssText = `
-        width: 48px; height: 72px; font-size: 16px; border-radius: 4px;
-        position: absolute; inset: 0;
-        backface-visibility: hidden;
-    `;
+    const { cx, cy, inner } = tableGeometry;
+    const halfSpan = info.halfSpan;
+    const centerAngle = info.centerAngle;
 
-    // Front face (the colored intel card)
-    const colorBgs = {
-        red: 'linear-gradient(135deg, #c0392b 0%, #e74c3c 50%, #c0392b 100%)',
-        blue: 'linear-gradient(135deg, #2471a3 0%, #3498db 50%, #2471a3 100%)',
-        black: 'linear-gradient(135deg, #1c2833 0%, #2c3e50 50%, #1c2833 100%)',
+    const colorMap = {
+        red: '#c45c5c',
+        blue: '#4a7fb5',
+        black: '#4e5a6e',
     };
     const colorLabels = { red: '红', blue: '蓝', black: '黑' };
+    const fillColor = colorMap[color] || colorMap.black;
 
-    const frontFace = document.createElement('div');
-    frontFace.className = 'card-front';
-    frontFace.style.cssText = `
-        width: 48px; height: 72px; border-radius: 4px;
-        position: absolute; inset: 0;
-        backface-visibility: hidden;
-        transform: rotateY(180deg);
-        background: ${colorBgs[color] || colorBgs.black};
-        border: 1.5px solid rgba(255,255,255,0.2);
-        display: flex; align-items: center; justify-content: center;
-        font-size: 20px; font-weight: 700; color: #fff;
-        text-shadow: 0 1px 3px rgba(0,0,0,0.5);
-    `;
-    frontFace.textContent = colorLabels[color] || '?';
+    // Phase 1: Arc shrinks toward center (400ms)
+    const phase1Duration = 400;
+    const phase1Start = performance.now();
 
-    container.appendChild(backFace);
-    container.appendChild(frontFace);
-    layer.appendChild(container);
+    function phase1(now) {
+        const t = Math.min(1, (now - phase1Start) / phase1Duration);
+        const eased = easeInOut(t);
+        const currentHalfSpan = halfSpan * (1 - eased * 0.8);
+        const currentRx = inner.rx * (1 - eased * 0.7);
+        const currentRy = inner.ry * (1 - eased * 0.7);
 
-    // Flip animation: rotateY 0 → 180 with scale pulse
-    const flipKeyframes = [
-        { transform: 'rotateY(0deg) scale(1.0)', offset: 0 },
-        { transform: 'rotateY(90deg) scale(1.1)', offset: 0.4 },
-        { transform: 'rotateY(180deg) scale(1.05)', offset: 0.6 },
-        { transform: 'rotateY(180deg) scale(1.0)', offset: 1.0 },
-    ];
+        const d = intelArcPath(cx, cy, currentRx, currentRy, centerAngle, currentHalfSpan);
+        arc.setAttribute('d', d);
 
-    const anim = container.animate(flipKeyframes, {
-        duration: 1200,
-        easing: 'ease-in-out',
-        fill: 'forwards',
-    });
+        if (t < 1) {
+            requestAnimationFrame(phase1);
+        } else {
+            arc.classList.add('hidden');
+            startPhase2();
+        }
+    }
 
-    anim.onfinish = () => {
-        // Hold for 600ms then remove
-        setTimeout(() => {
-            container.remove();
-            onComplete();
-        }, 600);
-    };
+    function startPhase2() {
+        if (!revealEl || !revealText) { onComplete(); return; }
+
+        // Phase 2: Colored ellipse at center with text (600ms)
+        const erx = 24;
+        const ery = 18;
+        revealEl.setAttribute('cx', String(cx));
+        revealEl.setAttribute('cy', String(cy));
+        revealEl.setAttribute('rx', String(erx));
+        revealEl.setAttribute('ry', String(ery));
+        revealEl.style.fill = fillColor;
+        revealEl.style.opacity = '1';
+        revealEl.classList.remove('hidden');
+
+        revealText.setAttribute('x', String(cx));
+        revealText.setAttribute('y', String(cy));
+        revealText.textContent = colorLabels[color] || '?';
+        revealText.style.opacity = '1';
+        revealText.classList.remove('hidden');
+
+        const phase2Duration = 600;
+        const phase2Start = performance.now();
+
+        function phase2(now) {
+            const t = Math.min(1, (now - phase2Start) / phase2Duration);
+            const scale = 1 + 0.15 * Math.sin(t * Math.PI);
+            revealEl.setAttribute('transform',
+                `translate(${cx}, ${cy}) scale(${scale}) translate(${-cx}, ${-cy})`);
+            revealText.setAttribute('transform',
+                `translate(${cx}, ${cy}) scale(${scale}) translate(${-cx}, ${-cy})`);
+
+            if (t < 1) {
+                requestAnimationFrame(phase2);
+            } else {
+                revealEl.removeAttribute('transform');
+                revealText.removeAttribute('transform');
+                // Phase 3: Hold 800ms then fade out 400ms
+                setTimeout(() => {
+                    const fadeDuration = 400;
+                    const fadeStart = performance.now();
+                    function phase3(now) {
+                        const t = Math.min(1, (now - fadeStart) / fadeDuration);
+                        const opacity = 1 - t;
+                        revealEl.style.opacity = String(opacity);
+                        revealText.style.opacity = String(opacity);
+                        if (t < 1) {
+                            requestAnimationFrame(phase3);
+                        } else {
+                            revealEl.classList.add('hidden');
+                            revealText.classList.add('hidden');
+                            revealEl.style.opacity = '1';
+                            revealText.style.opacity = '1';
+                            onComplete();
+                        }
+                    }
+                    requestAnimationFrame(phase3);
+                }, 800);
+            }
+        }
+        requestAnimationFrame(phase2);
+    }
+
+    requestAnimationFrame(phase1);
 }

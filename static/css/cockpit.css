@@ -1,15 +1,15 @@
-/* Cockpit — my hand, Frutiger Aero */
+/* Cockpit — my hand, Neomorphism */
 
 #cockpit-area {
     flex: 0 0 auto;
-    height: 130px;      /* just enough for the card fan — no wasted space */
+    height: 130px;
     display: flex;
     flex-direction: column;
-    overflow: visible;  /* fan cards can poke above the box */
+    overflow: visible;
     padding: 0 8px 0;
     min-height: 0;
-    margin-top: 0px;  /* pull up into table area so cards sit closer to ellipse */
-    margin-bottom: 80px; /* gap between card fan and action bar */
+    margin-top: 0px;
+    margin-bottom: 80px;
     position: relative;
     z-index: 10;
 }
@@ -36,7 +36,6 @@
 /* Arc-based hand fan */
 .hand-card-wrap {
     position: absolute;
-    /* transform-origin at card center, fan rotation applied via JS */
     transform-origin: center center;
     transition: transform 0.3s var(--transition-smooth), filter 0.3s var(--transition-smooth);
     z-index: 1;
@@ -56,21 +55,19 @@
 .hand-card-wrap.card-selected-wrap .card {
     transform: translateY(-30px) scale(1.05);
     box-shadow:
-        0 8px 24px rgba(245, 166, 35, 0.4),
-        0 0 20px rgba(245, 166, 35, 0.2);
-    border-color: var(--color-accent);
+        0 8px 24px rgba(26, 39, 68, 0.3),
+        0 2px 6px rgba(26, 39, 68, 0.15),
+        0 0 0 2px var(--color-accent);
 }
 
 
-/* Card entrance animation — staggered deal.
-   Use 'backwards' fill (not 'both') so the animation doesn't lock
-   the transform after finishing, which would block click transitions. */
+/* Card entrance animation — staggered deal */
 .hand-card-wrap.card-entering .card {
     animation: card-deal-in 0.5s var(--transition-smooth) backwards;
     animation-delay: var(--enter-delay, 0s);
 }
 
-/* Ambient glow under hand */
+/* Ambient glow under hand — subtle navy-tinted radial */
 #my-hand::after {
     content: '';
     position: absolute;
@@ -78,7 +75,7 @@
     left: 10%;
     right: 10%;
     height: 50px;
-    background: radial-gradient(ellipse at 50% 100%, rgba(41,128,217,0.08) 0%, transparent 70%);
+    background: radial-gradient(ellipse at 50% 100%, rgba(26,39,68,0.06) 0%, transparent 70%);
     pointer-events: none;
     z-index: 0;
 }
@@ -94,12 +91,12 @@
 .swap-prompt {
     position: fixed;
     bottom: 0; left: 0; right: 0;
-    background: var(--color-glass);
-    backdrop-filter: blur(var(--blur-glass));
+    background: var(--color-surface);
     border-top: 2px solid var(--color-accent);
     padding: 12px;
     z-index: 70;
     text-align: center;
+    box-shadow: 0 -4px 12px var(--neu-dark);
 }
 
 .swap-prompt p {
@@ -111,12 +108,12 @@
 .gift-ui {
     position: fixed;
     bottom: 0; left: 0; right: 0;
-    background: var(--color-glass);
-    backdrop-filter: blur(var(--blur-glass));
+    background: var(--color-surface);
     border-top: 2px solid var(--color-danger);
     padding: 12px;
     z-index: 70;
     text-align: center;
+    box-shadow: 0 -4px 12px var(--neu-dark);
 }
 
 .gift-ui p {
@@ -132,17 +129,21 @@
 }
 
 .gift-player-btn {
-    padding: 4px 12px;
-    border-radius: var(--radius-sm);
-    background: rgba(255,255,255,0.7);
-    border: 1px solid var(--color-border);
+    padding: 8px 18px;
+    border-radius: var(--radius);
+    background: var(--color-surface);
+    border: none;
     color: var(--color-text);
-    font-size: 12px;
+    font-size: 13px;
+    font-weight: 600;
     cursor: pointer;
+    box-shadow: var(--shadow-raised);
+    transition: all 0.15s;
+    min-height: 36px;
 }
 
 .gift-player-btn.selected {
-    border-color: var(--color-accent);
-    background: linear-gradient(180deg, #ffbe3d 0%, #f5a623 100%);
+    background: var(--color-accent);
     color: #fff;
+    box-shadow: var(--shadow-inset);
 }

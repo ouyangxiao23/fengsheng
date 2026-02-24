@@ -11,11 +11,10 @@ export function showToast(msg, duration = 2000) {
         toast.id = 'toast-msg';
         toast.style.cssText = `
             position:fixed;bottom:60px;left:50%;transform:translateX(-50%);
-            background:var(--color-glass);
-            backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
-            border:1px solid var(--color-border);
-            padding:8px 16px;border-radius:6px;font-size:13px;z-index:99;
-            color:var(--color-text);
+            background:#d1d9e6;
+            box-shadow:0 4px 16px rgba(26,39,68,0.18), 0 2px 6px rgba(26,39,68,0.1);
+            padding:10px 20px;border-radius:10px;font-size:13px;z-index:99;
+            color:#1a2744;font-weight:500;
         `;
         document.body.appendChild(toast);
     }

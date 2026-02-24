@@ -1,112 +1,136 @@
-/* Table area — player avatars, Frutiger Aero glass */
+/* Table area — three-layer concentric circular design */
 
 #table-area {
     position: relative;
-    flex: 1;          /* takes ALL remaining space after fixed bars + cockpit */
+    flex: 1;
     overflow: visible;
     min-height: 0;
 }
 
-.avatar-wrap {
+/* SVG layers */
+.table-svg {
     position: absolute;
-    transform: translate(-50%, -50%);
-    text-align: center;
-    cursor: pointer;
-    transition: transform 0.3s var(--transition-smooth);
+    left: 0; top: 0;
+    pointer-events: none;
+    overflow: visible;
 }
 
-.avatar {
-    width: 48px; height: 48px;
-    border-radius: 50%;
-    background: var(--color-glass);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    border: 2px solid rgba(255,255,255,0.6);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 16px;
-    font-weight: 700;
-    color: var(--color-text);
-    position: relative;
-    transition: border-color 0.3s var(--transition-smooth),
-                box-shadow 0.3s var(--transition-smooth),
-                transform 0.3s var(--transition-smooth);
-    margin: 0 auto;
-    box-shadow: 0 2px 8px rgba(0,60,120,0.1), inset 0 1px 0 rgba(255,255,255,0.7);
+/* Layer 1: Inner circle — recessed motion surface */
+.inner-surface {
+    fill: var(--color-surface);
+    stroke: none;
 }
 
-.avatar-wrap:hover .avatar {
-    transform: scale(1.1);
-    box-shadow: 0 4px 16px rgba(0,60,120,0.18), inset 0 1px 0 rgba(255,255,255,0.7);
+/* Layer 2: Middle ring — player state wedges */
+.wedge {
+    fill: var(--color-surface2);
+    stroke: rgba(26, 39, 68, 0.08);
+    stroke-width: 0.5;
+    transition: fill 0.3s ease, opacity 0.3s ease;
 }
 
-.avatar-wrap:hover .avatar-name {
-    color: var(--color-text);
+.wedge-active {
+    fill: rgba(61, 153, 112, 0.15);
 }
 
-.avatar-active {
-    border-color: var(--color-success);
-    box-shadow:
-        inset 0 1px 0 rgba(255,255,255,0.7),
-        0 0 0 3px rgba(39, 174, 96, 0.25),
-        0 0 12px rgba(39, 174, 96, 0.2);
-    animation: pulse 2s infinite;
+.wedge-facing {
+    fill: rgba(26, 39, 68, 0.12);
 }
 
-.avatar-facing {
-    border-color: var(--color-accent);
-    box-shadow:
-        inset 0 1px 0 rgba(255,255,255,0.7),
-        0 0 0 3px rgba(245, 166, 35, 0.25),
-        0 0 12px rgba(245, 166, 35, 0.2);
-}
-
-.avatar-me {
-    border-color: var(--color-accent) !important;
-    box-shadow:
-        inset 0 1px 0 rgba(255,255,255,0.7),
-        0 0 0 3px rgba(245, 166, 35, 0.30),
-        0 0 10px rgba(245, 166, 35, 0.15);
-}
-
-.avatar-dead {
-    opacity: 0.3;
+.wedge-dead {
+    opacity: 0.35;
     filter: grayscale(1);
 }
 
-.avatar-name {
-    font-size: 10px;
-    color: var(--color-muted);
-    margin-top: 2px;
-    white-space: nowrap;
-    max-width: 60px;
-    overflow: hidden;
-    text-overflow: ellipsis;
+.wedge-separator {
+    stroke: rgba(26, 39, 68, 0.1);
+    stroke-width: 1;
 }
 
-.avatar-hand-count {
+/* Layer 3: Outer ring background */
+.outer-ring-bg {
+    fill: var(--color-surface);
+    fill-opacity: 0.7;
+}
+
+/* Layer 4: Player pills — arc-aligned SVG capsules */
+
+.pill-bg {
+    fill: #cdd4e0;
+    stroke: rgba(163, 177, 198, 0.25);
+    stroke-width: 0.5;
+}
+
+.pill-circle {
+    fill: var(--color-surface2);
+}
+
+.pill-circle-name {
+    fill: #f5f7fa;
+}
+
+.pill-circle-count {
+    fill: #f5f7fa;
+}
+
+.pill-intel-red   { fill: var(--color-red); }
+.pill-intel-blue  { fill: var(--color-blue); }
+.pill-intel-black { fill: var(--color-black-intel); }
+
+.pill-text {
+    fill: var(--color-text);
+    font-size: 11px;
+    font-weight: 800;
+    text-anchor: middle;
+    dominant-baseline: central;
+    pointer-events: none;
+    font-family: var(--font-main);
+}
+
+.pill-dead {
+    opacity: 0.35;
+    filter: grayscale(1);
+}
+
+/* Intel arc SVG layer (persistent — survives renderTable rebuilds) */
+.intel-arc-svg {
     position: absolute;
-    top: -4px; right: -6px;
-    background: rgba(255,255,255,0.85);
-    color: var(--color-text);
-    font-size: 9px;
-    width: 16px; height: 16px;
-    border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    border: 1px solid var(--color-border);
-    font-weight: 600;
-    box-shadow: 0 1px 3px rgba(0,40,90,0.1);
+    left: 0; top: 0;
+    pointer-events: none;
+    overflow: visible;
+    z-index: 5;
 }
 
-.avatar-intel {
-    display: flex;
-    gap: 2px;
-    justify-content: center;
-    margin-top: 3px;
+.intel-arc {
+    fill: #c8ced8;
+    stroke: rgba(26, 39, 68, 0.1);
+    stroke-width: 0.5;
+    filter: drop-shadow(2px 2px 4px rgba(163, 177, 198, 0.5));
 }
 
-.avatar-target-highlight {
-    border-color: var(--color-danger) !important;
-    box-shadow: 0 0 12px rgba(214, 48, 49, 0.3);
+.intel-arc.hidden {
+    display: none;
+}
+
+.intel-reveal {
+    fill: #c8ced8;
+    stroke: rgba(255, 255, 255, 0.3);
+    stroke-width: 1;
+    filter: drop-shadow(2px 2px 6px rgba(26, 39, 68, 0.3));
+}
+
+.intel-reveal.hidden {
+    display: none;
+}
+
+.intel-reveal-text {
+    fill: #fff;
+    font-size: 14px;
+    font-weight: 700;
+    text-anchor: middle;
+    dominant-baseline: central;
+}
+
+.intel-reveal-text.hidden {
+    display: none;
 }

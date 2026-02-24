@@ -188,4 +188,8 @@ export function renderStage() {
     const hasButtons = btns.innerHTML.trim().length > 0;
     const isTargeting = !!st.ui.targetMode;
     prompt.classList.toggle('prompt-active', hasButtons || isTargeting);
+
+    // Toggle target-mode class on table-area for CSS targeting
+    const tableArea = document.getElementById('table-area');
+    if (tableArea) tableArea.classList.toggle('target-mode', isTargeting);
 }

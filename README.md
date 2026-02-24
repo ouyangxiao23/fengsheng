@@ -1,3 +1,5 @@
+Resume this session with:                                                                       
+claude --resume 095cb2a2-313b-4d57-82b0-fa4678cab96e 
 # 绝密行动 (Secret Mission)
 
 A multiplayer hidden-identity card game for the web, inspired by 风声 (The Message). Players are secret agents belonging to rival factions, using a unified deck of cards that serve dual purposes — play them for powerful actions, or pass them face-down as intelligence. The tension of choosing how to use each card is the core of the game.

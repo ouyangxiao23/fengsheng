@@ -1,9 +1,9 @@
-/* Card rendering — Frutiger Aero, bold & glossy */
+/* Card rendering — Neomorphism, muted & soft */
 
 .card {
     width: var(--card-w);
     height: var(--card-h);
-    border-radius: 10px;
+    border-radius: var(--radius);
     position: relative;
     display: flex;
     flex-direction: column;
@@ -13,42 +13,19 @@
     transition: transform 0.3s var(--transition-smooth), box-shadow 0.3s var(--transition-smooth);
     flex-shrink: 0;
     user-select: none;
-    box-shadow:
-        0 3px 12px rgba(0, 30, 60, 0.25),
-        0 1px 4px rgba(0, 30, 60, 0.15),
-        inset 0 1px 0 rgba(255,255,255,0.4);
-    border: 1px solid rgba(255,255,255,0.35);
+    box-shadow: var(--shadow-card);
+    border: none;
 }
 
-/* Aero glossy sheen — top highlight band */
-.card::before {
-    content: '';
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 45%;
-    border-radius: 10px 10px 0 0;
-    background: linear-gradient(
-        180deg,
-        rgba(255,255,255,0.4) 0%,
-        rgba(255,255,255,0.15) 60%,
-        transparent 100%
-    );
-    pointer-events: none;
-    z-index: 1;
-}
-
-/* Intel color backgrounds — vivid, high-contrast */
+/* Intel color backgrounds — muted, soft gradients */
 .card-red {
-    background: linear-gradient(160deg, #ff6b6b 0%, #e53e3e 40%, #c53030 100%);
-    border-color: rgba(197, 48, 48, 0.3);
+    background: linear-gradient(160deg, #d07070 0%, #c45c5c 40%, #a84a4a 100%);
 }
 .card-blue {
-    background: linear-gradient(160deg, #63b3ed 0%, #3182ce 40%, #2563a0 100%);
-    border-color: rgba(37, 99, 160, 0.3);
+    background: linear-gradient(160deg, #6a9fd0 0%, #4a7fb5 40%, #3a6a9a 100%);
 }
 .card-black {
-    background: linear-gradient(160deg, #718096 0%, #4a5568 40%, #2d3748 100%);
-    border-color: rgba(45, 55, 72, 0.3);
+    background: linear-gradient(160deg, #6b778d 0%, #4e5a6e 40%, #3d4858 100%);
 }
 
 /* Card header: phase tag + action name */
@@ -62,11 +39,11 @@
 }
 
 .card-phase-tag {
-    background: rgba(0,0,0,0.25);
+    background: rgba(0,0,0,0.2);
     padding: 1px 5px;
     border-radius: 4px;
     font-size: 8px;
-    color: rgba(255,255,255,0.9);
+    color: rgba(255,255,255,0.85);
     font-weight: 600;
     letter-spacing: 0.5px;
     flex-shrink: 0;
@@ -76,7 +53,7 @@
     font-weight: 700;
     font-size: 12px;
     color: #fff;
-    text-shadow: 0 1px 2px rgba(0,0,0,0.25);
+    text-shadow: 0 1px 2px rgba(0,0,0,0.2);
     letter-spacing: 1px;
 }
 
@@ -88,8 +65,8 @@
     justify-content: center;
     font-size: 32px;
     font-weight: 700;
-    color: rgba(255,255,255,0.85);
-    text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    color: rgba(255,255,255,0.8);
+    text-shadow: 0 2px 4px rgba(0,0,0,0.15);
     position: relative;
     z-index: 2;
     font-family: var(--font-display);
@@ -124,73 +101,54 @@
 
 /* Direction badge */
 .card-badge-dir {
-    background: rgba(255,255,255,0.3);
+    background: rgba(255,255,255,0.2);
     color: #fff;
-    border: 1px solid rgba(255,255,255,0.25);
     font-size: 11px;
     min-width: 22px;
     text-align: center;
+    box-shadow: 1px 1px 3px rgba(0,0,0,0.1);
 }
 
 /* Lock badge */
 .card-badge-lock {
-    background: rgba(255, 200, 50, 0.35);
+    background: rgba(255, 200, 50, 0.3);
     color: #fff;
-    border: 1px solid rgba(255, 200, 50, 0.4);
-    text-shadow: 0 1px 1px rgba(0,0,0,0.2);
+    text-shadow: 0 1px 1px rgba(0,0,0,0.15);
+    box-shadow: 1px 1px 3px rgba(0,0,0,0.1);
 }
 
 /* Hidden badge */
 .card-badge-hidden {
-    background: rgba(0,0,0,0.2);
-    color: rgba(255,255,255,0.8);
-    border: 1px solid rgba(255,255,255,0.15);
+    background: rgba(0,0,0,0.15);
+    color: rgba(255,255,255,0.75);
+    box-shadow: 1px 1px 3px rgba(0,0,0,0.1);
 }
 
-/* Card back — Aero glossy blue */
+/* Card back — dark navy, no stripe pattern */
 .card-back {
     width: var(--card-w);
     height: var(--card-h);
-    border-radius: 10px;
-    background:
-        linear-gradient(
-            180deg,
-            rgba(255,255,255,0.35) 0%,
-            rgba(255,255,255,0.08) 40%,
-            transparent 55%
-        ),
-        repeating-linear-gradient(
-            45deg,
-            rgba(255,255,255,0.05) 0px,
-            rgba(255,255,255,0.05) 2px,
-            transparent 2px,
-            transparent 8px
-        ),
-        linear-gradient(160deg, #5b9bd5 0%, #3a7bc8 40%, #2a60a0 100%);
-    border: 1px solid rgba(255,255,255,0.35);
+    border-radius: var(--radius);
+    background: linear-gradient(160deg, #2c3e5a 0%, #1a2744 40%, #131d33 100%);
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    box-shadow:
-        0 3px 12px rgba(0, 30, 60, 0.25),
-        0 1px 4px rgba(0, 30, 60, 0.15),
-        inset 0 1px 0 rgba(255,255,255,0.4);
+    box-shadow: var(--shadow-card);
     position: relative;
 }
 .card-back::after {
     content: '\u5BC6';
     font-size: 26px;
-    color: rgba(255, 255, 255, 0.35);
+    color: rgba(224, 229, 236, 0.15);
     font-weight: 700;
     font-family: var(--font-display);
-    text-shadow: 0 1px 3px rgba(0,40,90,0.15);
     animation: subtle-breathe 3s ease-in-out infinite;
 }
 
 @keyframes subtle-breathe {
-    0%, 100% { opacity: 0.35; }
-    50% { opacity: 0.55; }
+    0%, 100% { opacity: 0.15; }
+    50% { opacity: 0.3; }
 }
 
 /* 3D flip container */
@@ -217,25 +175,22 @@
 .card-selected {
     transform: translateY(-16px) !important;
     box-shadow:
-        0 6px 24px rgba(245, 166, 35, 0.4),
-        0 2px 8px rgba(245, 166, 35, 0.2),
-        inset 0 1px 0 rgba(255,255,255,0.4);
-    border-color: var(--color-accent);
+        0 6px 20px rgba(26, 39, 68, 0.3),
+        0 2px 6px rgba(26, 39, 68, 0.15),
+        0 0 0 2px var(--color-accent);
 }
 
 .card-dimmed {
-    opacity: 0.7;
-    filter: grayscale(0.15);
+    opacity: 0.6;
+    filter: grayscale(0.2);
 }
 
-/* Playable card highlight — glowing contour */
+/* Playable card highlight — blue contour ring */
 .card-playable-wrap .card {
-    border-color: rgba(245, 200, 60, 0.8);
     box-shadow:
-        0 0 0 2px rgba(245, 200, 60, 0.6),
-        0 0 10px rgba(245, 200, 60, 0.3),
-        0 3px 12px rgba(0, 30, 60, 0.25),
-        inset 0 1px 0 rgba(255,255,255,0.4);
+        0 3px 10px rgba(26, 39, 68, 0.2),
+        0 0 0 2px rgba(74, 127, 181, 0.6),
+        0 0 10px rgba(74, 127, 181, 0.2);
 }
 
 /* Mini card (for intel area display) */
@@ -243,8 +198,7 @@
     width: 12px; height: 12px;
     border-radius: 50%;
     display: inline-block;
-    border: 1.5px solid rgba(255,255,255,0.6);
-    box-shadow: 0 1px 4px rgba(0,40,90,0.2);
+    box-shadow: 0 1px 3px rgba(26, 39, 68, 0.2);
 }
 .intel-pip-red   { background: var(--color-red); color: var(--color-red); }
 .intel-pip-blue  { background: var(--color-blue); color: var(--color-blue); }
@@ -255,8 +209,7 @@
     width: 18px; height: 18px;
     border-radius: 50%;
     display: inline-block;
-    border: 2px solid rgba(255,255,255,0.5);
-    box-shadow: 0 1px 4px rgba(0,40,90,0.15);
+    box-shadow: 0 1px 4px rgba(26, 39, 68, 0.2);
 }
 .my-intel-pip-red   { background: var(--color-red); }
 .my-intel-pip-blue  { background: var(--color-blue); }
